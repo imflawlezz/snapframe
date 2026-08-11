@@ -5,7 +5,16 @@ import Foundation
 import Observation
 
 private final class MPVCore: @unchecked Sendable {
-    var mpv: OpaquePointer?
+    nonisolated(unsafe) var mpv: OpaquePointer?
+
+    nonisolated init() {}
+
+    nonisolated func destroy() {
+        if let h = mpv {
+            mpv_terminate_destroy(h)
+            mpv = nil
+        }
+    }
 }
 
 @Observable
@@ -48,6 +57,7 @@ final class MPVPlayer: VideoPlaying {
     private var seekGeneration: UInt64 = 0
     private var openToken: UInt64 = 0
     private var lastPlayCaptureAt = Date.distantPast
+    private var publishCaptures = true
     private var playCaptureBusy = false
     private var playPreviewScaled = false
     private var captureSuspended = false
@@ -62,12 +72,10 @@ final class MPVPlayer: VideoPlaying {
         core.mpv = h
 
         _ = setOption("vo", "null")
-        // `ao=auto` can select a silent device when embedded in an app.
         _ = setOption("ao", "coreaudio")
         _ = setOption("audio-client-name", "Snapframe")
         _ = setOption("volume", "100")
         _ = setOption("audio-pitch-correction", "yes")
-        // VT for H.264/HEVC; software codecs listed in hwdec-codecs stay off VT.
         _ = setOption("hwdec", "videotoolbox-copy")
         _ = setOption("hwdec-codecs", "h264,hevc,prores,mpeg2video")
         _ = setOption("hr-seek", "yes")
@@ -94,10 +102,7 @@ final class MPVPlayer: VideoPlaying {
     }
 
     deinit {
-        if let h = core.mpv {
-            mpv_terminate_destroy(h)
-            core.mpv = nil
-        }
+        core.destroy()
     }
 
     func shutdown() {
@@ -105,10 +110,7 @@ final class MPVPlayer: VideoPlaying {
         playTimer?.invalidate()
         pollTimer = nil
         playTimer = nil
-        if let h = core.mpv {
-            mpv_terminate_destroy(h)
-            core.mpv = nil
-        }
+        core.destroy()
     }
 
     // MARK: - Compatibility shims
@@ -378,15 +380,59 @@ final class MPVPlayer: VideoPlaying {
         } else {
             display = parsed.image
         }
-        frameImage = NSImage(cgImage: display, size: NSSize(width: display.width, height: display.height))
-        hasDisplayFrame = true
-        displayEpoch &+= 1
-
-        if let pts {
-            position = pts
-            lastPos = pts
+        let nsImage = NSImage(cgImage: display, size: NSSize(width: display.width, height: display.height))
+        if publishCaptures {
+            frameImage = nsImage
+            hasDisplayFrame = true
+            displayEpoch &+= 1
+            if let pts {
+                position = pts
+                lastPos = pts
+            }
         }
         return true
+    }
+
+    func snapshotImage(at seconds: Double) async -> NSImage? {
+        let restorePos = position
+        publishCaptures = false
+        scrubMode = true
+
+        var t = max(0, seconds)
+        if duration > 0 { t = min(t, max(0, duration - 0.001)) }
+        seekGeneration &+= 1
+        let gen = seekGeneration
+        command(["seek", String(t), "absolute+exact"])
+        await waitSeekSettled(target: t, timeout: 0.35)
+        guard gen == seekGeneration else {
+            publishCaptures = true
+            scrubMode = false
+            return nil
+        }
+        _ = captureScreenshot()
+        let shot = frameImageFromLastCapture()
+
+        publishCaptures = true
+        scrubMode = false
+        seekGeneration &+= 1
+        let restoreGen = seekGeneration
+        command(["seek", String(restorePos), "absolute+exact"])
+        await waitSeekSettled(target: restorePos, timeout: 0.35)
+        guard restoreGen == seekGeneration else { return shot }
+        _ = captureScreenshot()
+        return shot
+    }
+
+    private func frameImageFromLastCapture() -> NSImage? {
+        guard let cg = capturedCGImage else { return nil }
+        let display: CGImage
+        if (cg.width > 1280 || cg.height > 720),
+           let small = scaledImage(cg, maxSide: 960, quality: .low) {
+            display = small
+        } else {
+            display = cg
+        }
+        return NSImage(cgImage: display, size: NSSize(width: display.width, height: display.height))
     }
 
     // MARK: - Timers

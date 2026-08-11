@@ -164,9 +164,11 @@ final class AppState {
             loadProgressMessage = ""
             syncSeekInputFromPlayer()
 
+            let thumbURL = url
+            let jumpToPending = cueStore?.pending.isEmpty == false
             Task { @MainActor in
-                await self.captureMidpointThumbnail(for: url)
-                if self.cueStore?.pending.isEmpty == false {
+                await self.captureMidpointThumbnail(for: thumbURL)
+                if jumpToPending {
                     self.nextCue()
                 }
             }
@@ -437,24 +439,12 @@ final class AppState {
     private func captureMidpointThumbnail(for url: URL) async {
         let duration = player.duration
         if duration <= 2 {
-            _ = player.captureExactFrame()
             RecentVideosStore.shared.record(videoURL: url, preview: player.frameImage)
             return
         }
 
-        let mid = duration * 0.5
-        player.setScrubMode(true)
-        player.seek(seconds: mid, precise: false)
-        try? await Task.sleep(nanoseconds: 180_000_000)
-        guard !Task.isCancelled else { return }
-        _ = player.captureExactFrame()
-        RecentVideosStore.shared.record(videoURL: url, preview: player.frameImage)
-
-        player.seek(seconds: 0, precise: true)
-        player.setScrubMode(false)
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        guard !Task.isCancelled else { return }
-        _ = player.captureExactFrame()
+        let preview = await player.snapshotImage(at: duration * 0.5)
+        RecentVideosStore.shared.record(videoURL: url, preview: preview ?? player.frameImage)
         syncSeekInputFromPlayer()
     }
 
