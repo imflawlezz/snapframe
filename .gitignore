@@ -1,0 +1,58 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*~
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+DerivedData/
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# CocoaPods / Carthage
+Pods/
+Carthage/Build/
+
+# IDE / editors
+.idea/
+.vscode/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+
+# Vendored native libs (Scripts/vendor-mpv.sh)
+Vendor/
+*.dylib
+
+# Local build / packaging artifacts
+*.app/
+*.xcarchive/
+exportOptions.plist
+
+# Agent / local scratch
+.cursor/
+tmp/
+*.log
