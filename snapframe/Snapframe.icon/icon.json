@@ -1,0 +1,109 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-gray:1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "automatic-gradient" : "display-p3:0.33615,0.61074,0.57796,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "extended-gray:1.00000,1.00000"
+              }
+            }
+          ],
+          "image-name" : "play.fill.svg",
+          "name" : "play.fill",
+          "position" : {
+            "scale" : 3.75,
+            "translation-in-points" : [
+              15,
+              0
+            ]
+          }
+        },
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "automatic-gradient" : "extended-gray:0.00000,1.00000",
+                "orientation" : {
+                  "start" : {
+                    "x" : 0,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1,
+                    "y" : 1
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-gray:1.00000,1.00000",
+                "orientation" : {
+                  "start" : {
+                    "x" : 0,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1,
+                    "y" : 1
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "automatic-gradient" : "extended-gray:1.00000,1.00000",
+                "orientation" : {
+                  "start" : {
+                    "x" : 0,
+                    "y" : 0
+                  },
+                  "stop" : {
+                    "x" : 1,
+                    "y" : 1
+                  }
+                }
+              }
+            }
+          ],
+          "image-name" : "crop.svg",
+          "name" : "crop",
+          "position" : {
+            "scale" : 10,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
