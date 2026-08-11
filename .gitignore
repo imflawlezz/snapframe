@@ -4,6 +4,8 @@
 .LSOverride
 *.swp
 *~
+*.orig
+*.bak
 
 # Xcode
 xcuserdata/
@@ -43,7 +45,7 @@ Carthage/Build/
 .vscode/
 *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 
-# Vendored native libs (Scripts/vendor-mpv.sh)
+# Vendored native libs
 Vendor/
 *.dylib
 
@@ -51,6 +53,13 @@ Vendor/
 *.app/
 *.xcarchive/
 exportOptions.plist
+dist/
+*.dmg
+*.zip
+
+# Release / DMG tooling (local only)
+Scripts/
+Packaging/
 
 # Agent / local scratch
 .cursor/
