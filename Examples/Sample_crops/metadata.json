@@ -1,0 +1,34 @@
+{
+  "source": "Sample.mkv",
+  "source_path": "/Users/you/Videos/Sample.mkv",
+  "crops": [
+    {
+      "file": "crop_001.png",
+      "timecode": "00:00:12.500",
+      "timecode_seconds": 12.5,
+      "crop": {
+        "x": 640,
+        "y": 200,
+        "size": 480
+      },
+      "video_size": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "file": "crop_002.jpg",
+      "timecode": "00:00:45.000",
+      "timecode_seconds": 45.0,
+      "crop": {
+        "x": 820,
+        "y": 160,
+        "size": 360
+      },
+      "video_size": {
+        "width": 1920,
+        "height": 1080
+      }
+    }
+  ]
+}

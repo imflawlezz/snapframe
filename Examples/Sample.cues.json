@@ -1,0 +1,34 @@
+{
+  "format": "snapframe-cues",
+  "version": 1,
+  "source": "Sample.mkv",
+  "cues": [
+    {
+      "id": "cue_001_intro",
+      "t": 12.5,
+      "timecode": "00:00:12.500",
+      "label": "Opening title",
+      "done": false
+    },
+    {
+      "id": "cue_002_face",
+      "t": 45.0,
+      "timecode": "00:00:45.000",
+      "label": "Character close-up",
+      "done": false
+    },
+    {
+      "id": "cue_003_wide",
+      "timecode": "00:02:10.250",
+      "label": "Wide establishing shot",
+      "done": false
+    },
+    {
+      "id": "cue_004_done_example",
+      "t": 180.0,
+      "timecode": "00:03:00.000",
+      "label": "Already cropped (example)",
+      "done": true
+    }
+  ]
+}
