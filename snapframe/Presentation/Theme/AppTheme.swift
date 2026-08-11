@@ -23,8 +23,11 @@ final class AppTheme {
         didSet {
             UserDefaults.standard.set(scheme.rawValue, forKey: "colorScheme")
             applyToWindows()
+            appearanceEpoch &+= 1
         }
     }
+
+    private var appearanceEpoch: Int = 0
 
     var ink: Color           { isDark ? Color(white: 0.92)                         : Color(red: 0.08, green: 0.10, blue: 0.12) }
     var inkSecondary: Color  { isDark ? Color(white: 0.55)                         : Color(red: 0.28, green: 0.32, blue: 0.36) }
@@ -47,9 +50,9 @@ final class AppTheme {
     let mono        = Font.system(size: 12, weight: .medium, design: .monospaced)
 
     var swiftUIScheme: ColorScheme? {
-        switch resolvedScheme {
-        case .light: return .light
-        case .dark:  return .dark
+        switch scheme {
+        case .light:  return .light
+        case .dark:   return .dark
         case .system: return nil
         }
     }
@@ -57,9 +60,20 @@ final class AppTheme {
     private init() {
         let saved = UserDefaults.standard.string(forKey: "colorScheme") ?? "system"
         scheme = AppColorScheme(rawValue: saved) ?? .system
+        DistributedNotificationCenter.default.addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.scheme == .system else { return }
+                self.appearanceEpoch &+= 1
+            }
+        }
     }
 
     private var isDark: Bool {
+        _ = appearanceEpoch
         switch scheme {
         case .dark: return true
         case .light: return false
@@ -68,18 +82,15 @@ final class AppTheme {
         }
     }
 
-    private var resolvedScheme: AppColorScheme {
-        if scheme == .system { return isDark ? .dark : .light }
-        return scheme
-    }
-
     func applyToWindows() {
-        let appearance: NSAppearance? = switch resolvedScheme {
-        case .dark:  NSAppearance(named: .darkAqua)
-        case .light: NSAppearance(named: .aqua)
-        case .system: nil
+        switch scheme {
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .system:
+            NSApp.appearance = nil
         }
-        NSApp.appearance = appearance
     }
 }
 
