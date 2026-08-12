@@ -27,7 +27,7 @@ struct snapframeApp: App {
                     NSApp.keyWindow?.title = AppInfo.windowTitle
                 }
         }
-        .defaultSize(width: 1280, height: 820)
+        .defaultSize(width: 1360, height: 860)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open Video…") { state.openVideo() }
@@ -48,7 +48,11 @@ struct snapframeApp: App {
                             }
                         }
                         Divider()
-                        Button("Clear Menu") { recents.clearAll() }
+                        Button("Clear Menu") {
+                            withAnimation(SnapMotion.spring) {
+                                recents.clearAll()
+                            }
+                        }
                     }
                 }
             }
@@ -61,8 +65,6 @@ struct snapframeApp: App {
                     .keyboardShortcut("r", modifiers: [.command])
                 Button("Toggle Inspector") { state.inspectorVisible.toggle() }
                     .keyboardShortcut("\\", modifiers: [.command])
-                Button("Toggle Crop Overlay") { state.cropOverlayVisible.toggle() }
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .appSettings) {
                 Button("Preferences…") { showingAbout = true }
@@ -77,41 +79,62 @@ struct snapframeApp: App {
             }
             CommandMenu("Playback") {
                 Button("Play / Pause") { state.player.togglePause() }
-                    .keyboardShortcut(" ", modifiers: [])
+                    .keyboardShortcut(.space, modifiers: [])
                 Button("Mute") { state.player.toggleMute() }
                     .keyboardShortcut("m", modifiers: [])
                 Divider()
                 Button("Previous Frame") { state.frameStep(-1) }
-                    .keyboardShortcut(",", modifiers: [])
+                    .keyboardShortcut(.leftArrow, modifiers: [])
                 Button("Next Frame") { state.frameStep(1) }
-                    .keyboardShortcut(".", modifiers: [])
+                    .keyboardShortcut(.rightArrow, modifiers: [])
                 Button("Back 10 Frames") { state.frameStep(-10) }
-                    .keyboardShortcut(",", modifiers: [.shift])
+                    .keyboardShortcut(.leftArrow, modifiers: [.shift])
                 Button("Forward 10 Frames") { state.frameStep(10) }
-                    .keyboardShortcut(".", modifiers: [.shift])
+                    .keyboardShortcut(.rightArrow, modifiers: [.shift])
                 Divider()
-                Button("Speed 1×") { state.player.setSpeed(1) }
+                Button("Seek Backward 1s") {
+                    state.player.seek(seconds: state.player.position - 1, precise: true)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.option])
+                Button("Seek Forward 1s") {
+                    state.player.seek(seconds: state.player.position + 1, precise: true)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.option])
+                Button("Seek Backward 5s") {
+                    state.player.seek(seconds: state.player.position - 5, precise: true)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.option, .shift])
+                Button("Seek Forward 5s") {
+                    state.player.seek(seconds: state.player.position + 5, precise: true)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.option, .shift])
+                Divider()
+                Button("Speed 0.5×") { state.player.setSpeed(0.5) }
                     .keyboardShortcut("1", modifiers: [])
-                Button("Speed 2×") { state.player.setSpeed(2) }
+                Button("Speed 1×") { state.player.setSpeed(1) }
                     .keyboardShortcut("2", modifiers: [])
-                Button("Speed 4×") { state.player.setSpeed(4) }
-                    .keyboardShortcut("4", modifiers: [])
-                Button("Speed 8×") { state.player.setSpeed(8) }
-                    .keyboardShortcut("8", modifiers: [])
+                Button("Speed 2×") { state.player.setSpeed(2) }
+                    .keyboardShortcut("3", modifiers: [])
             }
             CommandMenu("Cues") {
-                Button("Next Cue") { state.nextCue() }
-                    .keyboardShortcut("]", modifiers: [])
                 Button("Previous Cue") { state.prevCue() }
                     .keyboardShortcut("[", modifiers: [])
+                Button("Next Cue") { state.nextCue() }
+                    .keyboardShortcut("]", modifiers: [])
                 Button("Delete Active Cue") { state.deleteActiveCue() }
                     .keyboardShortcut(.delete, modifiers: [])
+            }
+            CommandMenu("Crops") {
+                Button("Toggle Crop Overlay") { state.cropOverlayVisible.toggle() }
+                    .keyboardShortcut("c", modifiers: [])
+                Button("Delete Active Crop") { state.deleteActiveCrop() }
+                    .keyboardShortcut(.delete, modifiers: .shift)
             }
         }
         .handlesExternalEvents(matching: Set(arrayLiteral: "*"))
     }
 
-    private static let videoExtensions: Set<String> = ["mkv", "mp4", "webm", "mov", "avi", "m4v"]
+    private static let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
 
     private func openVideoIfSupported(_ url: URL) {
         guard Self.videoExtensions.contains(url.pathExtension.lowercased()) else { return }
