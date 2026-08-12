@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct PreferencesSheet: View {
+    var onOpen: (() -> Void)? = nil
+
     @Environment(\.dismiss) private var dismiss
     @State private var theme = AppTheme.shared
     @State private var prefs = UserPreferences.shared
@@ -17,6 +19,11 @@ struct PreferencesSheet: View {
                         schemePicker
                             .frame(maxWidth: .infinity)
                     }
+                    preferenceToggle(
+                        label: "Pause on focus loss",
+                        detail: "Pause playback when the window loses focus",
+                        isOn: $prefs.pauseOnFocusLoss
+                    )
 
                     sectionHeader("Export")
                     preferenceRow(label: "Format") {
@@ -53,24 +60,10 @@ struct PreferencesSheet: View {
                         detail: "Load video.cues.json next to the file on open",
                         isOn: $prefs.autoImportSidecarCues
                     )
-                    preferenceToggle(
-                        label: "Snap to cues on seek",
-                        detail: "Magnet playhead to nearby cues when seeking",
-                        isOn: $prefs.snapToCuesOnSeek
-                    )
-                    preferenceRow(label: "Snap range") {
-                        Stepper(value: $prefs.cueSnapToleranceFrames, in: 1...24) {
-                            Text("\(prefs.cueSnapToleranceFrames) frames")
-                                .font(SnapTheme.mono)
-                                .foregroundStyle(SnapTheme.ink)
-                        }
-                        .disabled(!prefs.snapToCuesOnSeek)
-                        .opacity(prefs.snapToCuesOnSeek ? 1 : 0.45)
-                    }
                 }
                 .padding(.vertical, 8)
             }
-            .frame(maxHeight: 420)
+            .frame(maxHeight: 340)
             .background(SnapTheme.mist)
             .tint(SnapTheme.accent)
             Divider()
@@ -80,6 +73,7 @@ struct PreferencesSheet: View {
         .background(SnapTheme.panel)
         .preferredColorScheme(theme.swiftUIScheme)
         .tint(SnapTheme.accent)
+        .onAppear { onOpen?() }
     }
 
     private var header: some View {

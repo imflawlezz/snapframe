@@ -26,12 +26,20 @@ final class UserPreferences {
         didSet { UserDefaults.standard.set(autoImportSidecarCues, forKey: Keys.autoImportCues) }
     }
 
-    var snapToCuesOnSeek: Bool {
-        didSet { UserDefaults.standard.set(snapToCuesOnSeek, forKey: Keys.snapToCues) }
+    var inspectorWidth: Double {
+        didSet { UserDefaults.standard.set(inspectorWidth, forKey: Keys.inspectorWidth) }
     }
 
-    var cueSnapToleranceFrames: Int {
-        didSet { UserDefaults.standard.set(cueSnapToleranceFrames, forKey: Keys.snapTolerance) }
+    var cuesPaneFraction: Double {
+        didSet { UserDefaults.standard.set(cuesPaneFraction, forKey: Keys.cuesPaneFraction) }
+    }
+
+    var volume: Double {
+        didSet { UserDefaults.standard.set(volume, forKey: Keys.volume) }
+    }
+
+    var pauseOnFocusLoss: Bool {
+        didSet { UserDefaults.standard.set(pauseOnFocusLoss, forKey: Keys.pauseOnFocusLoss) }
     }
 
     private enum Keys {
@@ -40,19 +48,32 @@ final class UserPreferences {
         static let markCueDone = "pref.markCueDoneOnSave"
         static let advanceCue = "pref.advanceToNextCueAfterSave"
         static let autoImportCues = "pref.autoImportSidecarCues"
-        static let snapToCues = "pref.snapToCuesOnSeek"
-        static let snapTolerance = "pref.cueSnapToleranceFrames"
+        static let inspectorWidth = "pref.inspectorWidth"
+        static let cuesPaneFraction = "pref.cuesPaneFraction"
+        static let volume = "pref.volume"
+        static let pauseOnFocusLoss = "pref.pauseOnFocusLoss"
+
+        static let obsolete = [
+            "pref.playbackPreviewRate",
+            "pref.playbackPreviewResolution",
+            "pref.snapToCuesOnSeek",
+            "pref.cueSnapToleranceFrames",
+        ]
     }
 
     private init() {
+        Self.removeObsoleteKeys()
         let d = UserDefaults.standard
         exportFormat = ExportImageFormat(rawValue: d.string(forKey: Keys.exportFormat) ?? "") ?? .png
         jpegQuality = d.object(forKey: Keys.jpegQuality) as? Double ?? 0.92
         markCueDoneOnSave = d.object(forKey: Keys.markCueDone) as? Bool ?? true
         advanceToNextCueAfterSave = d.object(forKey: Keys.advanceCue) as? Bool ?? true
         autoImportSidecarCues = d.object(forKey: Keys.autoImportCues) as? Bool ?? true
-        snapToCuesOnSeek = d.object(forKey: Keys.snapToCues) as? Bool ?? true
-        cueSnapToleranceFrames = d.object(forKey: Keys.snapTolerance) as? Int ?? 4
+        let savedInspectorWidth = d.object(forKey: Keys.inspectorWidth) as? Double ?? 304
+        inspectorWidth = min(480, max(240, savedInspectorWidth))
+        cuesPaneFraction = d.object(forKey: Keys.cuesPaneFraction) as? Double ?? 0.42
+        volume = d.object(forKey: Keys.volume) as? Double ?? 100
+        pauseOnFocusLoss = d.object(forKey: Keys.pauseOnFocusLoss) as? Bool ?? true
     }
 
     func resetToDefaults() {
@@ -61,7 +82,17 @@ final class UserPreferences {
         markCueDoneOnSave = true
         advanceToNextCueAfterSave = true
         autoImportSidecarCues = true
-        snapToCuesOnSeek = true
-        cueSnapToleranceFrames = 4
+        inspectorWidth = 304
+        cuesPaneFraction = 0.42
+        volume = 100
+        pauseOnFocusLoss = true
+        Self.removeObsoleteKeys()
+    }
+
+    private static func removeObsoleteKeys() {
+        let d = UserDefaults.standard
+        for key in Keys.obsolete {
+            d.removeObject(forKey: key)
+        }
     }
 }
