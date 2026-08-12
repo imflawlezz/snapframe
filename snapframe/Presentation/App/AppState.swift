@@ -5,7 +5,7 @@ import Observation
 @Observable
 @MainActor
 final class AppState {
-    let player = MPVPlayer()
+    let player = NativeVideoPlayer()
 
     var videoURL: URL?
     var cropStore: CropStore?
@@ -24,13 +24,16 @@ final class AppState {
 
     var isLoadingVideo = false
     var loadProgressMessage = ""
+
+    var isOpeningVideo: Bool { isLoadingVideo && videoURL == nil }
     var cropsRevision: Int = 0
+    var activeCropIndex: Int?
 
     private var loadTask: Task<Void, Never>?
     private var didCenterCrop = false
     private var lastScrubPreviewAt: Date = .distantPast
 
-    static let supportedFormats = ["MKV", "MP4", "WebM", "MOV", "AVI", "M4V"]
+    static let supportedFormats = ["MP4", "MOV", "M4V"]
 
     var outputFolderURL: URL? { cropStore?.cropsFolder }
 
@@ -100,7 +103,7 @@ final class AppState {
     }
 
     func setCropInteracting(_ active: Bool) {
-        player.setCaptureSuspended(active)
+        player.setPlaybackCaptureSuppressed(active)
         if !active { syncCropFieldsFromRect() }
     }
 
@@ -118,22 +121,43 @@ final class AppState {
         }
     }
 
+    func closeVideo() {
+        loadTask?.cancel()
+        loadTask = nil
+        player.closeMedia()
+        isLoadingVideo = false
+        loadProgressMessage = ""
+        videoURL = nil
+        cropStore = nil
+        cueStore = nil
+        crop = .default
+        seekInput = ""
+        activeCropIndex = nil
+        didCenterCrop = false
+        status = "Drop a video or press ⌘O"
+        errorMessage = nil
+    }
+
     func loadVideo(_ url: URL) {
         loadTask?.cancel()
         player.cancelOpen()
 
+        let openingFresh = videoURL == nil
         isLoadingVideo = true
         loadProgressMessage = "Preparing…"
-        videoURL = url
         lastDirectory = url.deletingLastPathComponent()
         UserDefaults.standard.set(lastDirectory?.path, forKey: "lastDirectory")
 
-        cropStore = CropStore(videoURL: url)
-        cueStore = CueStore(sourceFilename: url.lastPathComponent)
-        didCenterCrop = false
-        crop = .default
-        seekInput = ""
-        status = url.lastPathComponent
+        if !openingFresh {
+            videoURL = url
+            cropStore = CropStore(videoURL: url)
+            cueStore = CueStore(sourceFilename: url.lastPathComponent)
+            didCenterCrop = false
+            crop = .default
+            seekInput = ""
+            activeCropIndex = nil
+            status = url.lastPathComponent
+        }
 
         loadTask = Task {
             loadProgressMessage = "Opening…"
@@ -148,8 +172,19 @@ final class AppState {
             if !ready {
                 isLoadingVideo = false
                 errorMessage = player.lastError ?? "Could not open video"
-                videoURL = nil
+                if openingFresh {
+                    videoURL = nil
+                }
                 return
+            }
+
+            if openingFresh {
+                cropStore = CropStore(videoURL: url)
+                cueStore = CueStore(sourceFilename: url.lastPathComponent)
+                didCenterCrop = false
+                crop = .default
+                seekInput = ""
+                activeCropIndex = nil
             }
 
             loadProgressMessage = "Loading cues…"
@@ -160,7 +195,15 @@ final class AppState {
             }
 
             ensureCenteredCrop()
-            isLoadingVideo = false
+            _ = player.refreshFrame(preferQuality: true)
+
+            if openingFresh {
+                isLoadingVideo = false
+                videoURL = url
+                status = url.lastPathComponent
+            } else {
+                isLoadingVideo = false
+            }
             loadProgressMessage = ""
             syncSeekInputFromPlayer()
 
@@ -258,18 +301,7 @@ final class AppState {
 
     func frameStep(_ n: Int) {
         player.frameStep(n)
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 160_000_000)
-            guard !Task.isCancelled else { return }
-            let snapped = snapTimeToCueIfNeeded(player.position)
-            if abs(snapped - player.position) > 1e-4 {
-                player.seek(seconds: snapped, precise: true)
-            }
-            if let near = cueStore?.nearest(to: player.position) {
-                cueStore?.activeID = near.id
-            }
-            syncSeekInputFromPlayer()
-        }
+        syncSeekInputFromPlayer()
     }
 
     func gotoCue(_ id: String) {
@@ -325,6 +357,7 @@ final class AppState {
     func seekCrop(at index: Int) {
         guard let entries = cropStore?.entries, entries.indices.contains(index) else { return }
         let entry = entries[index]
+        activeCropIndex = index
         player.pause(true)
         player.seek(seconds: entry.timecodeSeconds, precise: true)
         crop = CropRect(x: entry.x, y: entry.y, size: entry.size)
@@ -336,9 +369,19 @@ final class AppState {
         do {
             try cropStore?.remove(at: index)
             cropsRevision &+= 1
+            if activeCropIndex == index {
+                activeCropIndex = nil
+            } else if let active = activeCropIndex, active > index {
+                activeCropIndex = active - 1
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func deleteActiveCrop() {
+        guard let index = activeCropIndex else { return }
+        deleteCrop(at: index)
     }
 
     func saveCrop() {
@@ -351,7 +394,6 @@ final class AppState {
 
         player.pause(true)
         player.setScrubMode(false)
-        // Scrub/preview captures can be stale — re-grab the playhead frame before encode.
         guard player.captureExactFrame(), let cg = player.capturedCGImage else {
             errorMessage = player.lastError ?? "No frame captured yet."
             return
@@ -389,47 +431,31 @@ final class AppState {
     }
 
     func onTimelineSeek(seconds: Double, precise: Bool) {
-        player.pause(true)
         if precise {
-            let target = snapTimeToCueIfNeeded(seconds)
             player.setScrubMode(false)
-            player.seek(seconds: target, precise: true)
-            if let near = cueStore?.nearest(to: target, maxDelta: snapToleranceSeconds()) {
+            player.seek(seconds: seconds, precise: true)
+            if let near = cueStore?.nearest(to: seconds) {
                 cueStore?.activeID = near.id
             }
             syncSeekInputFromPlayer()
         } else {
+            if !player.isPaused {
+                player.pause(true)
+            }
             player.setScrubMode(true)
             player.seek(seconds: seconds, precise: false)
             let now = Date()
-            if now.timeIntervalSince(lastScrubPreviewAt) >= 0.14 {
+            if now.timeIntervalSince(lastScrubPreviewAt) >= 0.05 {
                 lastScrubPreviewAt = now
                 player.refreshScrubPreview()
             }
         }
     }
 
-    private func snapToleranceSeconds() -> Double {
-        CueSnapper.toleranceSeconds(
-            fps: player.fps,
-            frames: UserPreferences.shared.cueSnapToleranceFrames
-        )
-    }
-
-    private func snapTimeToCueIfNeeded(_ seconds: Double) -> Double {
-        CueSnapper.snap(
-            seconds,
-            cues: cueStore,
-            enabled: UserPreferences.shared.snapToCuesOnSeek,
-            tolerance: snapToleranceSeconds()
-        )
-    }
-
     private func seekTo(seconds: Double, precise: Bool) {
-        let target = precise ? snapTimeToCueIfNeeded(seconds) : seconds
         player.pause(true)
         player.setScrubMode(false)
-        player.seek(seconds: target, precise: precise)
+        player.seek(seconds: seconds, precise: precise)
         if let near = cueStore?.nearest(to: player.position) {
             cueStore?.activeID = near.id
         }
@@ -438,14 +464,32 @@ final class AppState {
 
     private func captureMidpointThumbnail(for url: URL) async {
         let duration = player.duration
+        let mediaInfo = recentMediaInfo()
         if duration <= 2 {
-            RecentVideosStore.shared.record(videoURL: url, preview: player.frameImage)
+            RecentVideosStore.shared.record(videoURL: url, preview: player.frameImage, mediaInfo: mediaInfo)
             return
         }
 
         let preview = await player.snapshotImage(at: duration * 0.5)
-        RecentVideosStore.shared.record(videoURL: url, preview: preview ?? player.frameImage)
+        RecentVideosStore.shared.record(
+            videoURL: url,
+            preview: preview ?? player.frameImage,
+            mediaInfo: mediaInfo
+        )
         syncSeekInputFromPlayer()
+    }
+
+    private func recentMediaInfo() -> RecentVideoMediaInfo? {
+        let w = Int(player.videoSize.width)
+        let h = Int(player.videoSize.height)
+        guard w > 0, h > 0 else { return nil }
+        return RecentVideoMediaInfo(
+            width: w,
+            height: h,
+            fps: player.fps,
+            duration: player.duration,
+            codec: player.videoCodec
+        )
     }
 
     private func loadSidecarCues(for url: URL, jumpToFirstPending: Bool) async {

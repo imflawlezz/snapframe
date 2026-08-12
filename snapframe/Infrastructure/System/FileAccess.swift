@@ -2,12 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 enum FileAccess {
-    static let videoTypes: [UTType] = {
-        var types: [UTType] = [.mpeg4Movie, .quickTimeMovie, .avi]
-        if let mkv = UTType(filenameExtension: "mkv") { types.insert(mkv, at: 0) }
-        if let webm = UTType(filenameExtension: "webm") { types.append(webm) }
-        return types
-    }()
+    static let videoTypes: [UTType] = [.mpeg4Movie, .quickTimeMovie]
 
     static func openVideoPanel(startURL: URL?) -> URL? {
         let panel = NSOpenPanel()
