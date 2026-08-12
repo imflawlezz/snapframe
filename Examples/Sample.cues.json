@@ -1,7 +1,7 @@
 {
   "format": "snapframe-cues",
   "version": 1,
-  "source": "Sample.mkv",
+  "source": "Sample.mp4",
   "cues": [
     {
       "id": "cue_001_intro",
