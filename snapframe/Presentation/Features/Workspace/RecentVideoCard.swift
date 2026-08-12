@@ -35,11 +35,12 @@ struct RecentVideoCard: View {
                     .foregroundStyle(SnapTheme.ink)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(item.outputFolderName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(SnapTheme.inkSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                if !item.mediaDetailsLine.isEmpty {
+                    Text(item.mediaDetailsLine)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(SnapTheme.inkSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 0)

@@ -2,18 +2,17 @@ import SwiftUI
 
 struct InspectorPane: View {
     @Bindable var state: AppState
+    @State private var liveCuesFraction: Double?
+    @State private var isResizingSplit = false
+    @State private var hoveringCropIndex: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            cuesSection
-                .frame(maxHeight: state.hasCues ? .infinity : nil, alignment: .topLeading)
-                .layoutPriority(state.hasCues ? 1 : 0)
-
-            Divider().background(SnapTheme.stroke)
-
-            cropsSection
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-                .layoutPriority(1)
+        GeometryReader { geo in
+            if state.hasCues {
+                resizableSplit(totalHeight: geo.size.height)
+            } else {
+                fixedSplit
+            }
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .background(SnapTheme.panel)
@@ -22,7 +21,41 @@ struct InspectorPane: View {
         }
     }
 
-    // MARK: Cues
+    private var fixedSplit: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            cuesSection
+            Divider().background(SnapTheme.stroke)
+            cropsSection
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func resizableSplit(totalHeight: CGFloat) -> some View {
+        let fraction = liveCuesFraction ?? UserPreferences.shared.cuesPaneFraction
+        let cuesHeight = max(120, min(totalHeight - 140, totalHeight * fraction))
+
+        return VStack(spacing: 0) {
+            cuesSection
+                .frame(height: cuesHeight, alignment: .topLeading)
+
+            ResizeDivider(axis: .vertical) { delta in
+                let current = liveCuesFraction ?? UserPreferences.shared.cuesPaneFraction
+                liveCuesFraction = min(0.72, max(0.22, current + Double(delta / totalHeight)))
+            } onDragStateChanged: { dragging in
+                isResizingSplit = dragging
+                if !dragging, let fraction = liveCuesFraction {
+                    UserPreferences.shared.cuesPaneFraction = fraction
+                    liveCuesFraction = nil
+                }
+            }
+
+            cropsSection
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+        }
+        .transaction { transaction in
+            if isResizingSplit { transaction.animation = nil }
+        }
+    }
 
     private var cuesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -73,8 +106,6 @@ struct InspectorPane: View {
         .padding(12)
     }
 
-    // MARK: Crops
-
     private var cropsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -103,6 +134,20 @@ struct InspectorPane: View {
                 .scrollIndicators(.visible)
                 .tint(SnapTheme.accent)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                HStack(spacing: 4) {
+                    Spacer()
+                    ToolButton(
+                        systemName: "trash.fill",
+                        kind: .danger,
+                        tooltip: "Delete crop",
+                        shortcut: "⇧⌫"
+                    ) {
+                        state.deleteActiveCrop()
+                    }
+                    .disabled(state.activeCropIndex == nil)
+                    .opacity(state.activeCropIndex == nil ? 0.4 : 1)
+                }
             } else {
                 Text("No crops saved yet")
                     .font(SnapTheme.bodyFont)
@@ -147,8 +192,15 @@ struct InspectorPane: View {
     }
 
     private func cropRow(_ e: CropEntry, index: Int) -> some View {
-        Button { state.seekCrop(at: index) } label: {
+        let active = state.activeCropIndex == index
+        let hovering = hoveringCropIndex == index
+        return Button {
+            state.seekCrop(at: index)
+        } label: {
             HStack(spacing: 6) {
+                Circle()
+                    .fill(active ? SnapTheme.accent : SnapTheme.warn.opacity(0.85))
+                    .frame(width: 7, height: 7)
                 Text(e.timecode)
                     .font(SnapTheme.mono)
                     .foregroundStyle(SnapTheme.ink)
@@ -166,12 +218,23 @@ struct InspectorPane: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
+            .background(rowBackground(active: active, hovering: hovering))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contextMenu {
-            Button("Seek") { state.seekCrop(at: index) }
-            Button("Delete", role: .destructive) { state.deleteCrop(at: index) }
+        .onHover { isHover in
+            if isHover {
+                hoveringCropIndex = index
+            } else if hoveringCropIndex == index {
+                hoveringCropIndex = nil
+            }
         }
+    }
+
+    private func rowBackground(active: Bool, hovering: Bool) -> Color {
+        if active { return SnapTheme.accentSoft }
+        if hovering { return SnapTheme.accentSoft.opacity(0.45) }
+        return Color.clear
     }
 }

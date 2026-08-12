@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func clearRecents() {
-        RecentVideosStore.shared.clearAll()
+        Task { @MainActor in
+            withAnimation(SnapMotion.spring) {
+                RecentVideosStore.shared.clearAll()
+            }
+        }
     }
 }

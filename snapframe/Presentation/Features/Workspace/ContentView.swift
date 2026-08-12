@@ -7,33 +7,45 @@ struct ContentView: View {
     @Binding var showingAbout: Bool
     @State private var theme = AppTheme.shared
     @State private var recents = RecentVideosStore.shared
+    @Bindable private var prefs = UserPreferences.shared
     @State private var isDropTargeted = false
+    @State private var liveInspectorWidth: Double?
+    @State private var isResizingInspector = false
+    @State private var lastSeekSyncAt = Date.distantPast
 
     var body: some View {
         ZStack {
             SnapTheme.mist.ignoresSafeArea()
 
-            if state.videoURL == nil && !state.isLoadingVideo {
+            if state.videoURL == nil {
                 emptyState
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 workspace
-            }
-
-            if state.isLoadingVideo {
-                LoadingOverlay(message: state.loadProgressMessage)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
 
             if isDropTargeted {
                 DropTargetOverlay()
                     .transition(.opacity)
                     .allowsHitTesting(false)
+                    .zIndex(20)
             }
         }
-        .frame(minWidth: 1080, minHeight: 680)
+        .animation(SnapMotion.standard, value: isDropTargeted)
+        .frame(minWidth: WorkspaceLayout.windowMinWidth, minHeight: WorkspaceLayout.windowMinHeight)
+        .background(
+            WindowMinSizeConfigurator(minSize: NSSize(
+                width: WorkspaceLayout.windowMinWidth,
+                height: WorkspaceLayout.windowMinHeight
+            ))
+        )
         .preferredColorScheme(theme.swiftUIScheme)
         .environment(\.appTheme, theme)
         .sheet(isPresented: $showingAbout) {
-            PreferencesSheet()
+            PreferencesSheet(onOpen: {
+                state.player.pause(true)
+            })
         }
         .alert("Something went wrong", isPresented: Binding(
             get: { state.errorMessage != nil },
@@ -43,20 +55,35 @@ struct ContentView: View {
         } message: {
             Text(state.errorMessage ?? "")
         }
+        .animation(state.isOpeningVideo ? nil : SnapMotion.spring, value: state.videoURL?.absoluteString)
+        .animation(SnapMotion.standard, value: state.isOpeningVideo)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
-        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
-        .background(HotkeyCatcher(state: state, showingAbout: $showingAbout))
+        .background(HotkeyCatcher(state: state))
         .onChange(of: state.player.videoSize) { _, new in
             if new.width > 0 { state.ensureCenteredCrop() }
         }
         .onChange(of: state.player.position) { _, _ in
-            if !state.isLoadingVideo { state.syncSeekInputFromPlayer() }
+            guard !state.isLoadingVideo else { return }
+            if state.player.isPaused {
+                state.syncSeekInputFromPlayer()
+            } else {
+                let now = Date()
+                if now.timeIntervalSince(lastSeekSyncAt) > 0.25 {
+                    lastSeekSyncAt = now
+                    state.syncSeekInputFromPlayer()
+                }
+            }
         }
         .onChange(of: state.jumpMode) { _, _ in
             state.syncSeekInputFromPlayer()
         }
         .onChange(of: state.crop) { _, _ in
             state.syncCropFieldsFromRect()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            if prefs.pauseOnFocusLoss {
+                state.player.pause(true)
+            }
         }
     }
 
@@ -78,10 +105,18 @@ struct ContentView: View {
 
                     recentPane
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(SnapMotion.spring, value: recents.items.isEmpty)
+        .overlay {
+            if state.isOpeningVideo {
+                LoadingCard(message: state.loadProgressMessage)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
     }
 
     private var emptyOpenHero: some View {
@@ -137,7 +172,11 @@ struct ContentView: View {
                     .font(SnapTheme.titleFont)
                     .foregroundStyle(SnapTheme.ink)
                 Spacer()
-                Button("Clear list") { recents.clearAll() }
+                Button("Clear list") {
+                    withAnimation(SnapMotion.spring) {
+                        recents.clearAll()
+                    }
+                }
                     .buttonStyle(.plain)
                     .font(SnapTheme.bodyFont)
                     .foregroundStyle(SnapTheme.inkSecondary)
@@ -153,12 +192,18 @@ struct ContentView: View {
                             preview: recents.previewImage(for: item),
                             onOpen: { state.loadVideo(item.videoURL) },
                             onRevealFolder: { recents.revealOutputFolder(item) },
-                            onRemove: { recents.remove(item) }
+                            onRemove: {
+                                withAnimation(SnapMotion.standard) {
+                                    recents.remove(item)
+                                }
+                            }
                         )
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
+                .animation(SnapMotion.spring, value: recents.items.map(\.id))
             }
         }
         .background(SnapTheme.panel.opacity(0.55))
@@ -171,10 +216,37 @@ struct ContentView: View {
             topBar
             HStack(spacing: 0) {
                 mainColumn
+                    .frame(minWidth: WorkspaceLayout.mainMinWidth, maxWidth: .infinity)
+                    .layoutPriority(1)
                 if state.inspectorVisible {
+                    ResizeDivider(axis: .horizontal) { delta in
+                        let current = liveInspectorWidth ?? prefs.inspectorWidth
+                        liveInspectorWidth = round(min(
+                            WorkspaceLayout.inspectorMaxWidth,
+                            max(WorkspaceLayout.inspectorMinWidth, current - Double(delta))
+                        ))
+                    } onDragStateChanged: { dragging in
+                        isResizingInspector = dragging
+                        if !dragging, let width = liveInspectorWidth {
+                            prefs.inspectorWidth = width
+                            liveInspectorWidth = nil
+                        }
+                    }
                     InspectorPane(state: state)
-                        .frame(width: 304)
+                        .frame(
+                            width: liveInspectorWidth ?? prefs.inspectorWidth,
+                            alignment: .topLeading
+                        )
+                        .frame(
+                            minWidth: WorkspaceLayout.inspectorMinWidth,
+                            maxWidth: WorkspaceLayout.inspectorMaxWidth
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+            }
+            .transaction { transaction in
+                if isResizingInspector { transaction.animation = nil }
             }
             mediaInfoBar
         }
@@ -184,6 +256,15 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(spacing: 0) {
+            ToolButton(
+                systemName: "house",
+                tooltip: "Home",
+                shortcut: "Esc"
+            ) {
+                state.closeVideo()
+            }
+            .padding(.trailing, 8)
+
             Text("SNAPFRAME")
                 .font(.custom("Avenir Next Condensed", size: 16).weight(.bold))
                 .tracking(3)
@@ -200,7 +281,32 @@ struct ContentView: View {
 
             Spacer(minLength: 12)
 
-            HStack(spacing: 20) {
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    ToolButton(
+                        systemName: state.player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                        tooltip: "Mute", shortcut: "M"
+                    ) { state.player.toggleMute() }
+                    Slider(
+                        value: Binding(
+                            get: { state.player.volume },
+                            set: { state.player.setVolume($0) }
+                        ),
+                        in: 0...100,
+                        onEditingChanged: { editing in
+                            if !editing { state.player.commitVolume() }
+                        }
+                    )
+                    .frame(width: 88)
+                    .tint(SnapTheme.accent)
+                    .disabled(state.player.isMuted)
+                    .opacity(state.player.isMuted ? 0.4 : 1)
+                }
+
+                Rectangle()
+                    .fill(SnapTheme.stroke)
+                    .frame(width: 1, height: 22)
+
                 HStack(spacing: 4) {
                     ToolButton(systemName: "film", tooltip: "Open video", shortcut: "⌘O") { state.openVideo() }
                     ToolButton(systemName: "list.bullet", tooltip: "Import cues", shortcut: "⌘I") { state.importCues() }
@@ -226,13 +332,17 @@ struct ContentView: View {
                     ToolButton(
                         systemName: "crop",
                         kind: state.cropOverlayVisible ? .accent : .normal,
-                        tooltip: "Toggle crop overlay", shortcut: "⌘⇧C"
+                        tooltip: "Toggle crop overlay", shortcut: "C"
                     ) { state.cropOverlayVisible.toggle() }
                     ToolButton(
                         systemName: "sidebar.right",
                         kind: state.inspectorVisible ? .accent : .normal,
                         tooltip: "Toggle inspector", shortcut: "⌘\\"
-                    ) { state.inspectorVisible.toggle() }
+                    ) {
+                        withAnimation(SnapMotion.inspector) {
+                            state.inspectorVisible.toggle()
+                        }
+                    }
                 }
 
                 HStack(spacing: 4) {
@@ -268,6 +378,7 @@ struct ContentView: View {
                 duration: state.player.duration,
                 position: state.player.position,
                 fps: state.player.fps,
+                isPlaying: !state.player.isPaused,
                 markers: state.timelineMarkers,
                 seekInput: $state.seekInput,
                 jumpMode: $state.jumpMode,
@@ -280,6 +391,7 @@ struct ContentView: View {
             .onTapGesture { DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) } }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: WorkspaceLayout.mainMinWidth)
     }
 
     // MARK: - Transport
@@ -287,33 +399,38 @@ struct ContentView: View {
     private var transportBar: some View {
         HStack(spacing: 0) {
             HStack(spacing: 20) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     ToolButton(
                         systemName: state.player.isPaused ? "play.fill" : "pause.fill",
                         kind: .accent,
                         tooltip: "Play / Pause", shortcut: "Space"
                     ) { state.player.togglePause() }
-                    ToolButton(
-                        systemName: state.player.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                        tooltip: "Mute", shortcut: "M"
-                    ) { state.player.toggleMute() }
                 }
 
                 HStack(spacing: 4) {
-                    ToolButton(systemName: "backward.end.fill",  tooltip: "Back 10 frames",   shortcut: "⇧,") { state.frameStep(-10) }
-                    ToolButton(systemName: "chevron.backward",   tooltip: "Previous frame",    shortcut: ",")  { state.frameStep(-1) }
-                    ToolButton(systemName: "chevron.forward",    tooltip: "Next frame",        shortcut: ".")  { state.frameStep(1) }
-                    ToolButton(systemName: "forward.end.fill",   tooltip: "Forward 10 frames", shortcut: "⇧.") { state.frameStep(10) }
+                    FrameSkipButton(count: 10, direction: .backward, tooltip: "Back 10 frames", shortcut: "⇧←") {
+                        state.frameStep(-10)
+                    }
+                    FrameSkipButton(count: 1, direction: .backward, tooltip: "Previous frame", shortcut: "←") {
+                        state.frameStep(-1)
+                    }
+                    FrameSkipButton(count: 1, direction: .forward, tooltip: "Next frame", shortcut: "→") {
+                        state.frameStep(1)
+                    }
+                    FrameSkipButton(count: 10, direction: .forward, tooltip: "Forward 10 frames", shortcut: "⇧→") {
+                        state.frameStep(10)
+                    }
                 }
 
                 HStack(spacing: 3) {
-                    ForEach([1.0, 2.0, 4.0, 8.0], id: \.self) { s in
-                        Button("\(Int(s))×") { state.player.setSpeed(s) }
+                    ForEach([0.5, 1.0, 2.0], id: \.self) { s in
+                        Button(speedLabel(s)) { state.player.setSpeed(s) }
+                            .font(SnapTheme.bodyFont)
                             .buttonStyle(ToolButtonStyle(
                                 kind: abs(state.player.speed - s) < 0.01 ? .accent : .normal,
-                                width: 34
+                                width: s == 0.5 ? 40 : 34
                             ))
-                            .snapTooltip("Speed \(Int(s))×", shortcut: "\(Int(s))")
+                            .snapTooltip("Speed \(speedLabel(s))", shortcut: speedShortcut(s))
                     }
                 }
             }
@@ -338,6 +455,10 @@ struct ContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+        .background(SnapTheme.panel)
+        .overlay(alignment: .top) {
+            Rectangle().fill(SnapTheme.stroke).frame(height: 1)
+        }
         .contentShape(Rectangle())
         .onTapGesture { DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) } }
     }
@@ -350,32 +471,41 @@ struct ContentView: View {
                 state.applyCropFields()
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
-            cropField(label: "X", placeholder: "Δ", text: $state.cropOffsetXText) {
+            cropField(label: "X", placeholder: "Δ", text: $state.cropOffsetXText, allowsNegative: true) {
                 state.applyCropFields()
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
-            cropField(label: "Y", placeholder: "Δ", text: $state.cropOffsetYText) {
+            cropField(label: "Y", placeholder: "Δ", text: $state.cropOffsetYText, allowsNegative: true) {
                 state.applyCropFields()
                 DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             }
         }
     }
 
-    private func cropField(label: String, placeholder: String, text: Binding<String>, onSubmit: @escaping () -> Void) -> some View {
+    private func cropField(
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        allowsNegative: Bool = false,
+        onSubmit: @escaping () -> Void
+    ) -> some View {
         HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(SnapTheme.inkSecondary)
-            TextField(placeholder, text: text)
-                .textFieldStyle(.plain)
-                .font(SnapTheme.mono)
-                .foregroundStyle(SnapTheme.fieldText)
-                .multilineTextAlignment(.center)
-                .frame(width: 48, height: 28)
-                .background(SnapTheme.fieldBg)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(SnapTheme.stroke, lineWidth: 1))
-                .onSubmit(onSubmit)
+            DigitsTextField(
+                text: text,
+                placeholder: placeholder,
+                allowsNegative: allowsNegative,
+                font: .monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+                textColor: NSColor(SnapTheme.fieldText),
+                alignment: .center,
+                onCommit: onSubmit
+            )
+            .frame(width: 48, height: 28)
+            .background(SnapTheme.fieldBg)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(SnapTheme.stroke, lineWidth: 1))
         }
     }
 
@@ -406,10 +536,23 @@ struct ContentView: View {
         for p in providers {
             _ = p.loadObject(ofClass: URL.self) { url, _ in
                 guard let url else { return }
-                guard ["mkv", "mp4", "webm", "mov", "avi", "m4v"].contains(url.pathExtension.lowercased()) else { return }
+                guard ["mp4", "mov", "m4v"].contains(url.pathExtension.lowercased()) else { return }
                 DispatchQueue.main.async { state.loadVideo(url) }
             }
         }
         return true
+    }
+
+    private func speedLabel(_ speed: Double) -> String {
+        speed == 0.5 ? "0.5×" : "\(Int(speed))×"
+    }
+
+    private func speedShortcut(_ speed: Double) -> String {
+        switch speed {
+        case 0.5: "1"
+        case 1.0: "2"
+        case 2.0: "3"
+        default: ""
+        }
     }
 }

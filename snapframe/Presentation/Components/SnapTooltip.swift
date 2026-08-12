@@ -109,19 +109,29 @@ private final class TooltipController {
     private let panel = TooltipPanel()
     private var showTimer: Timer?
     private var hideTimer: Timer?
+    private weak var anchorView: NSView?
 
     func scheduleShow(label: String, shortcut: String, near view: NSView) {
         guard !label.isEmpty else { return }
         hideTimer?.invalidate()
         showTimer?.invalidate()
-        showTimer = Timer.scheduledTimer(withTimeInterval: 0.28, repeats: false) { [weak self] _ in
-            self?.show(label: label, shortcut: shortcut, near: view)
+        anchorView = view
+        showTimer = Timer.scheduledTimer(withTimeInterval: 0.28, repeats: false) { [weak self, weak view] _ in
+            guard let self, let view, view.window != nil else {
+                self?.hideImmediately()
+                return
+            }
+            self.show(label: label, shortcut: shortcut, near: view)
         }
     }
 
     func show(label: String, shortcut: String, near view: NSView) {
-        guard !label.isEmpty else { return }
+        guard !label.isEmpty, view.window != nil else {
+            hideImmediately()
+            return
+        }
         hideTimer?.invalidate()
+        anchorView = view
 
         let hosting = NSHostingView(rootView: TooltipContent(label: label, shortcut: shortcut))
         hosting.wantsLayer = true
@@ -161,13 +171,28 @@ private final class TooltipController {
         panel.orderFront(nil)
     }
 
+    func hideIfAnchor(_ view: NSView) {
+        if anchorView === view {
+            hideImmediately()
+        }
+    }
+
     func hide() {
         showTimer?.invalidate()
         showTimer = nil
         hideTimer?.invalidate()
         hideTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: false) { [weak self] _ in
-            self?.panel.orderOut(nil)
+            self?.hideImmediately()
         }
+    }
+
+    private func hideImmediately() {
+        showTimer?.invalidate()
+        showTimer = nil
+        hideTimer?.invalidate()
+        hideTimer = nil
+        anchorView = nil
+        panel.orderOut(nil)
     }
 }
 
@@ -225,6 +250,17 @@ private struct TooltipTrigger: NSViewRepresentable {
             super.init(frame: .zero)
         }
         required init?(coder: NSCoder) { fatalError() }
+
+        deinit {
+            TooltipController.shared.hideIfAnchor(self)
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            super.viewWillMove(toWindow: newWindow)
+            if newWindow == nil {
+                TooltipController.shared.hideIfAnchor(self)
+            }
+        }
 
         override func updateTrackingAreas() {
             super.updateTrackingAreas()

@@ -44,6 +44,25 @@ final class AppTheme {
     var fieldBg: Color       { isDark ? Color(red: 0.10, green: 0.11, blue: 0.13)  : Color.white }
     var fieldText: Color     { isDark ? Color(white: 0.88)                         : Color.black }
 
+    var timelineSurface: Color {
+        isDark ? Color(red: 0.20, green: 0.22, blue: 0.24) : Color(red: 0.80, green: 0.83, blue: 0.86)
+    }
+    var timelineTrack: Color {
+        isDark ? Color(red: 0.08, green: 0.09, blue: 0.10) : Color(red: 0.70, green: 0.73, blue: 0.77)
+    }
+    var timelineGrid: Color {
+        isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.08)
+    }
+    var timelineGridMinor: Color {
+        isDark ? Color.white.opacity(0.24) : Color.black.opacity(0.16)
+    }
+    var timelineGridMajor: Color {
+        isDark ? Color.white.opacity(0.46) : Color.black.opacity(0.28)
+    }
+    var timelinePlayheadStem: Color {
+        isDark ? Color.white.opacity(0.92) : Color(red: 0.10, green: 0.12, blue: 0.14)
+    }
+
     let displayFont = Font.custom("Avenir Next Condensed", size: 42).weight(.semibold)
     let titleFont   = Font.custom("Avenir Next", size: 14).weight(.semibold)
     let bodyFont    = Font.custom("Avenir Next", size: 13).weight(.medium)
@@ -63,7 +82,7 @@ final class AppTheme {
         DistributedNotificationCenter.default.addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
-            queue: .main
+            queue: .main    
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.scheme == .system else { return }

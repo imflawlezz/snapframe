@@ -7,16 +7,6 @@ struct ToolButton: View {
     var shortcut: String = ""
     var action: () -> Void
 
-    init(systemName: String, kind: ToolButtonStyle.Kind = .normal,
-         tooltip: String = "", shortcut: String = "", help: String = "",
-         action: @escaping () -> Void) {
-        self.systemName = systemName
-        self.kind = kind
-        self.tooltip = tooltip.isEmpty ? help : tooltip
-        self.shortcut = shortcut
-        self.action = action
-    }
-
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -54,6 +44,31 @@ struct ToolButtonStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(
                 kind == .normal || kind == .danger ? SnapTheme.stroke : .clear, lineWidth: 1
             ))
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(SnapMotion.fast, value: configuration.isPressed)
             .contentShape(Rectangle())
+    }
+}
+
+struct FrameSkipButton: View {
+    enum Direction { case backward, forward }
+
+    let count: Int
+    let direction: Direction
+    var tooltip: String = ""
+    var shortcut: String = ""
+    let action: () -> Void
+
+    private var systemName: String {
+        switch (count, direction) {
+        case (10, .backward): "chevron.backward.2"
+        case (_, .backward): "chevron.backward"
+        case (10, .forward): "chevron.forward.2"
+        default: "chevron.forward"
+        }
+    }
+
+    var body: some View {
+        ToolButton(systemName: systemName, tooltip: tooltip, shortcut: shortcut, action: action)
     }
 }

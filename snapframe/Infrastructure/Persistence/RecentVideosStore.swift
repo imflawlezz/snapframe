@@ -26,7 +26,7 @@ final class RecentVideosStore {
         return videoURL.deletingLastPathComponent().appendingPathComponent("\(stem)_crops")
     }
 
-    func record(videoURL: URL, preview: NSImage?) {
+    func record(videoURL: URL, preview: NSImage?, mediaInfo: RecentVideoMediaInfo? = nil) {
         let output = Self.cropsFolder(for: videoURL)
         let thumbName = preview.map { saveThumbnail($0, for: videoURL) } ?? existingPreview(for: videoURL.path)
 
@@ -35,7 +35,12 @@ final class RecentVideosStore {
             videoPath: videoURL.path,
             outputFolderPath: output.path,
             lastOpened: Date(),
-            previewFilename: thumbName
+            previewFilename: thumbName,
+            videoWidth: mediaInfo?.width,
+            videoHeight: mediaInfo?.height,
+            fps: mediaInfo?.fps,
+            durationSeconds: mediaInfo?.duration,
+            codec: mediaInfo?.codec
         ), at: 0)
         items = Array(list.prefix(maxItems))
         persist()

@@ -15,6 +15,12 @@ enum SnapTheme {
     static var stroke: Color       { AppTheme.shared.stroke }
     static var fieldBg: Color      { AppTheme.shared.fieldBg }
     static var fieldText: Color    { AppTheme.shared.fieldText }
+    static var timelineSurface: Color { AppTheme.shared.timelineSurface }
+    static var timelineTrack: Color   { AppTheme.shared.timelineTrack }
+    static var timelineGrid: Color    { AppTheme.shared.timelineGrid }
+    static var timelineGridMinor: Color { AppTheme.shared.timelineGridMinor }
+    static var timelineGridMajor: Color { AppTheme.shared.timelineGridMajor }
+    static var timelinePlayheadStem: Color { AppTheme.shared.timelinePlayheadStem }
 
     static let closeRed   = Color(red: 1.0, green: 0.37, blue: 0.34)
     static let minYellow  = Color(red: 1.0, green: 0.74, blue: 0.18)

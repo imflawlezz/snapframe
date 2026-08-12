@@ -25,7 +25,7 @@ struct CropOverlayView: NSViewRepresentable {
         context.coordinator.onInteractionChange = onInteractionChange
         nsView.accent = accent
         nsView.videoSize = videoSize
-        // Avoid overwriting an in-progress drag/resize with SwiftUI echo updates.
+        nsView.needsDisplay = true
         guard !nsView.isInteracting else { return }
         if nsView.crop != crop {
             nsView.crop = crop
@@ -74,6 +74,22 @@ final class CropCanvasView: NSView {
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
+    override var isOpaque: Bool { false }
+
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        needsDisplay = true
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
+    }
+
+    override func layout() {
+        super.layout()
+        needsDisplay = true
+    }
 
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
@@ -215,7 +231,6 @@ final class CropCanvasView: NSView {
         let delta = event.scrollingDeltaY
         guard abs(delta) > 0.1 else { return }
         coordinator?.setInteracting(true)
-        // Coarse steps avoid flooding SwiftUI with tiny size updates.
         let step = abs(delta) >= 1 ? 24 : 8
         let cx = crop.x + crop.size / 2
         let cy = crop.y + crop.size / 2
@@ -257,20 +272,11 @@ final class CropCanvasView: NSView {
     // MARK: - Geometry
 
     private func letterbox(in size: CGSize) -> CGRect {
-        guard videoSize.width > 0, videoSize.height > 0 else { return .zero }
-        let scale = min(size.width / videoSize.width, size.height / videoSize.height)
-        let w = videoSize.width * scale
-        let h = videoSize.height * scale
-        return CGRect(x: (size.width - w) / 2, y: (size.height - h) / 2, width: w, height: h)
+        CropGeometry.letterbox(videoSize: videoSize, in: size)
     }
 
     private func viewRect(letter: CGRect, scale: CGFloat) -> CGRect {
-        CGRect(
-            x: letter.minX + CGFloat(crop.x) * scale,
-            y: letter.minY + CGFloat(crop.y) * scale,
-            width: CGFloat(crop.size) * scale,
-            height: CGFloat(crop.size) * scale
-        )
+        CropGeometry.viewRect(crop: crop, letter: letter, videoSize: videoSize)
     }
 
     private func handlePoints(_ r: CGRect) -> [(Mode, CGPoint)] {
