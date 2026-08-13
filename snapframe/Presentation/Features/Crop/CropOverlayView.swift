@@ -4,6 +4,7 @@ import SwiftUI
 struct CropOverlayView: NSViewRepresentable {
     var videoSize: CGSize
     @Binding var crop: CropRect
+    var resizeLock: CropResizeLock = .free
     var accent: NSColor = NSColor(red: 0.12, green: 0.72, blue: 0.68, alpha: 1)
     var onInteractionChange: ((Bool) -> Void)?
 
@@ -17,6 +18,7 @@ struct CropOverlayView: NSViewRepresentable {
         view.accent = accent
         view.videoSize = videoSize
         view.crop = crop
+        view.resizeLock = resizeLock
         return view
     }
 
@@ -25,6 +27,7 @@ struct CropOverlayView: NSViewRepresentable {
         context.coordinator.onInteractionChange = onInteractionChange
         nsView.accent = accent
         nsView.videoSize = videoSize
+        nsView.resizeLock = resizeLock
         nsView.needsDisplay = true
         guard !nsView.isInteracting else { return }
         if nsView.crop != crop {
@@ -54,6 +57,7 @@ struct CropOverlayView: NSViewRepresentable {
 final class CropCanvasView: NSView {
     weak var coordinator: CropOverlayView.Coordinator?
     var accent: NSColor = .systemTeal
+    var resizeLock: CropResizeLock = .free
     var videoSize: CGSize = .zero {
         didSet { if oldValue != videoSize { needsDisplay = true } }
     }
@@ -61,14 +65,25 @@ final class CropCanvasView: NSView {
         didSet { needsDisplay = true }
     }
 
-    private enum Mode { case none, move, nw, ne, sw, se, place }
+    private enum Mode {
+        case none, move, place
+        case nw, ne, sw, se
+        case n, e, s, w
+    }
+
     private var mode: Mode = .none
     private var origin = CropRect.default
     private var anchor = CGPoint.zero
     private var startPoint = CGPoint.zero
-    private let handleRadius: CGFloat = 6
+    private let handleRadius: CGFloat = 5
+    private let edgeHit: CGFloat = 8
     private let minCrop = 16
     private var scrollCommitWork: DispatchWorkItem?
+    private var dimAlpha: CGFloat = 0.48
+    private var layoutAnimating = false
+    private var presentedLetter = CGRect.zero
+    private var presentedCrop = CGRect.zero
+    private var layoutTimer: Timer?
 
     var isInteracting: Bool { mode != .none }
 
@@ -78,17 +93,34 @@ final class CropCanvasView: NSView {
 
     override func resize(withOldSuperviewSize oldSize: NSSize) {
         super.resize(withOldSuperviewSize: oldSize)
-        needsDisplay = true
+        animateLayoutIfNeeded()
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        needsDisplay = true
+        animateLayoutIfNeeded()
     }
 
     override func layout() {
         super.layout()
-        needsDisplay = true
+        if !layoutAnimating {
+            needsDisplay = true
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            dimAlpha = 0.48
+            needsDisplay = true
+        }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil {
+            layoutTimer?.invalidate()
+        }
     }
 
     override func updateTrackingAreas() {
@@ -103,11 +135,17 @@ final class CropCanvasView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard videoSize.width > 0, videoSize.height > 0 else { return }
-        let letter = letterbox(in: bounds.size)
-        let scale = letter.width / videoSize.width
-        let r = viewRect(letter: letter, scale: scale)
+        let letterTarget = letterbox(in: bounds.size)
+        let scale = letterTarget.width / videoSize.width
+        let cropTarget = viewRect(letter: letterTarget, scale: scale)
+        let letter = layoutAnimating ? presentedLetter : letterTarget
+        let r = layoutAnimating ? presentedCrop : cropTarget
+        if !layoutAnimating {
+            presentedLetter = letterTarget
+            presentedCrop = cropTarget
+        }
 
-        let dim = NSColor.black.withAlphaComponent(0.48)
+        let dim = NSColor.black.withAlphaComponent(dimAlpha)
         dim.setFill()
         let path = NSBezierPath(rect: letter)
         path.append(NSBezierPath(rect: r))
@@ -134,10 +172,7 @@ final class CropCanvasView: NSView {
 
         accent.setFill()
         NSColor.white.setStroke()
-        for p in [CGPoint(x: r.minX, y: r.minY),
-                  CGPoint(x: r.maxX, y: r.minY),
-                  CGPoint(x: r.minX, y: r.maxY),
-                  CGPoint(x: r.maxX, y: r.maxY)] {
+        for p in cornerPoints(r) {
             let hr = NSRect(x: p.x - handleRadius, y: p.y - handleRadius,
                             width: handleRadius * 2, height: handleRadius * 2)
             let h = NSBezierPath(ovalIn: hr)
@@ -146,19 +181,69 @@ final class CropCanvasView: NSView {
             h.stroke()
         }
 
+        accent.withAlphaComponent(0.9).setFill()
+        NSColor.white.setStroke()
+        for p in edgeMidpoints(r) {
+            let hr = NSRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)
+            let h = NSBezierPath(ovalIn: hr)
+            h.fill()
+            h.lineWidth = 1
+            h.stroke()
+        }
+
         let off = crop.centerOffset(in: videoSize)
-        let label = "\(crop.size)×\(crop.size)  ·  Δ\(off.dx),\(off.dy)" as NSString
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .medium),
+        drawCropBadge(at: r, offset: off)
+    }
+
+    private func drawCropBadge(at r: CGRect, offset: (dx: Int, dy: Int)) {
+        let dimFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let metaFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        let dim = "\(crop.width) × \(crop.height)" as NSString
+        let meta = String(format: "%+d, %+d", offset.dx, offset.dy) as NSString
+
+        let dimAttrs: [NSAttributedString.Key: Any] = [
+            .font: dimFont,
             .foregroundColor: NSColor.white,
         ]
-        let size = label.size(withAttributes: attrs)
-        let labelOrigin = CGPoint(x: r.minX, y: max(4, r.minY - size.height - 6))
-        let bg = NSRect(x: labelOrigin.x - 4, y: labelOrigin.y - 2,
-                        width: size.width + 8, height: size.height + 4)
-        NSColor.black.withAlphaComponent(0.55).setFill()
-        NSBezierPath(roundedRect: bg, xRadius: 4, yRadius: 4).fill()
-        label.draw(at: labelOrigin, withAttributes: attrs)
+        let metaAttrs: [NSAttributedString.Key: Any] = [
+            .font: metaFont,
+            .foregroundColor: NSColor.white.withAlphaComponent(0.62),
+        ]
+        let dimSize = dim.size(withAttributes: dimAttrs)
+        let metaSize = meta.size(withAttributes: metaAttrs)
+        let padX: CGFloat = 10
+        let padY: CGFloat = 6
+        let gap: CGFloat = 6
+        let dividerH: CGFloat = max(dimSize.height, metaSize.height)
+        let contentW = dimSize.width + gap + 1 + gap + metaSize.width
+        let contentH = max(dimSize.height, metaSize.height)
+        let badgeW = contentW + padX * 2
+        let badgeH = contentH + padY * 2
+
+        var origin = CGPoint(x: r.minX, y: r.minY - badgeH - 8)
+        if origin.y < 4 {
+            origin.y = min(bounds.maxY - badgeH - 4, r.maxY + 8)
+        }
+        origin.x = min(max(4, origin.x), bounds.maxX - badgeW - 4)
+
+        let bg = NSRect(x: origin.x, y: origin.y, width: badgeW, height: badgeH)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        NSBezierPath(roundedRect: bg, xRadius: 7, yRadius: 7).fill()
+        accent.withAlphaComponent(0.55).setStroke()
+        let stroke = NSBezierPath(roundedRect: bg.insetBy(dx: 0.5, dy: 0.5), xRadius: 7, yRadius: 7)
+        stroke.lineWidth = 1
+        stroke.stroke()
+
+        let textY = origin.y + (badgeH - contentH) / 2
+        var x = origin.x + padX
+        dim.draw(at: CGPoint(x: x, y: textY + (contentH - dimSize.height) / 2), withAttributes: dimAttrs)
+        x += dimSize.width + gap
+
+        NSColor.white.withAlphaComponent(0.22).setFill()
+        NSBezierPath(rect: NSRect(x: x, y: origin.y + (badgeH - dividerH) / 2, width: 1, height: dividerH)).fill()
+        x += 1 + gap
+
+        meta.draw(at: CGPoint(x: x, y: textY + (contentH - metaSize.height) / 2), withAttributes: metaAttrs)
     }
 
     // MARK: - Interaction
@@ -175,10 +260,14 @@ final class CropCanvasView: NSView {
         origin = crop
         startPoint = p
 
-        if hitHandle(.nw, in: r, point: p) { beginResize(.nw); return }
-        if hitHandle(.ne, in: r, point: p) { beginResize(.ne); return }
-        if hitHandle(.sw, in: r, point: p) { beginResize(.sw); return }
-        if hitHandle(.se, in: r, point: p) { beginResize(.se); return }
+        for m in [Mode.nw, .ne, .sw, .se] where hitCorner(m, in: r, point: p) {
+            beginResize(m)
+            return
+        }
+        for m in [Mode.n, .e, .s, .w] where hitEdge(m, in: r, point: p) {
+            beginResize(m)
+            return
+        }
 
         if r.insetBy(dx: -4, dy: -4).contains(p) {
             mode = .move
@@ -188,8 +277,8 @@ final class CropCanvasView: NSView {
 
         mode = .place
         coordinator?.setInteracting(true)
-        let vx = Int((p.x - letter.minX) / scale) - crop.size / 2
-        let vy = Int((p.y - letter.minY) / scale) - crop.size / 2
+        let vx = Int((p.x - letter.minX) / scale) - crop.width / 2
+        let vy = Int((p.y - letter.minY) / scale) - crop.height / 2
         var next = crop
         next.x = vx
         next.y = vy
@@ -213,33 +302,44 @@ final class CropCanvasView: NSView {
             return
         }
 
-        let mx = (p.x - letter.minX) / scale
-        let my = (p.y - letter.minY) / scale
+        let mx = min(max(0, (p.x - letter.minX) / scale), videoSize.width)
+        let my = min(max(0, (p.y - letter.minY) / scale), videoSize.height)
         apply(resize(mode: mode, mouse: CGPoint(x: mx, y: my)), commit: false)
     }
 
     override func mouseUp(with event: NSEvent) {
-        if mode == .move || mode == .nw || mode == .ne || mode == .sw || mode == .se {
+        switch mode {
+        case .move, .nw, .ne, .sw, .se, .n, .e, .s, .w:
             coordinator?.commit(crop)
+        default:
+            break
         }
         mode = .none
         coordinator?.setInteracting(false)
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard videoSize.width > 0 else { return }
-        let delta = event.scrollingDeltaY
-        guard abs(delta) > 0.1 else { return }
+        guard videoSize.width > 0 else {
+            nextResponder?.scrollWheel(with: event)
+            return
+        }
+        let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 8
+        let dy = event.scrollingDeltaY * scale
+        let dx = event.scrollingDeltaX * scale
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let shift = mods.contains(.shift)
+        let raw = shift ? (abs(dx) >= abs(dy) ? dx : dy) : dy
+        guard abs(raw) > 0.05 else { return }
         coordinator?.setInteracting(true)
-        let step = abs(delta) >= 1 ? 24 : 8
-        let cx = crop.x + crop.size / 2
-        let cy = crop.y + crop.size / 2
+        let step = max(1, Int((abs(raw) * 0.75).rounded()))
+        let signed = raw > 0 ? step : -step
         var next = crop
-        next.size += delta > 0 ? step : -step
-        next = clamp(next)
-        next.x = cx - next.size / 2
-        next.y = cy - next.size / 2
-        apply(clamp(next), commit: false)
+        if shift {
+            next.setWidth(next.width + signed, in: videoSize, lock: resizeLock)
+        } else {
+            next.setHeight(next.height + signed, in: videoSize, lock: resizeLock)
+        }
+        apply(next, commit: false)
 
         scrollCommitWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -257,16 +357,66 @@ final class CropCanvasView: NSView {
         let scale = letter.width / videoSize.width
         let r = viewRect(letter: letter, scale: scale)
         addCursorRect(r, cursor: .openHand)
-        for (m, _) in handlePoints(r) {
-            let cursor: NSCursor
-            switch m {
-            case .nw, .se: cursor = .crosshair
-            case .ne, .sw: cursor = .crosshair
-            default: cursor = .arrow
-            }
-            let hr = handleRect(m, in: r)
-            addCursorRect(hr, cursor: cursor)
+        for m in [Mode.nw, .ne, .sw, .se] {
+            addCursorRect(cornerHitRect(m, in: r), cursor: .crosshair)
         }
+        addCursorRect(edgeHitRect(.n, in: r), cursor: .resizeUpDown)
+        addCursorRect(edgeHitRect(.s, in: r), cursor: .resizeUpDown)
+        addCursorRect(edgeHitRect(.e, in: r), cursor: .resizeLeftRight)
+        addCursorRect(edgeHitRect(.w, in: r), cursor: .resizeLeftRight)
+    }
+
+    // MARK: - Layout animation
+
+    private func animateLayoutIfNeeded() {
+        guard videoSize.width > 0, window != nil, !isInteracting else {
+            needsDisplay = true
+            return
+        }
+        let letter = letterbox(in: bounds.size)
+        let scale = letter.width / max(videoSize.width, 1)
+        let cropRect = viewRect(letter: letter, scale: scale)
+        if presentedLetter == .zero {
+            presentedLetter = letter
+            presentedCrop = cropRect
+            needsDisplay = true
+            return
+        }
+        if hypot(letter.midX - presentedLetter.midX, letter.midY - presentedLetter.midY) < 0.5,
+           abs(letter.width - presentedLetter.width) < 0.5 {
+            needsDisplay = true
+            return
+        }
+        let fromLetter = presentedLetter
+        let fromCrop = presentedCrop
+        layoutTimer?.invalidate()
+        layoutAnimating = true
+        let start = Date()
+        let duration: TimeInterval = 0.12
+        layoutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let p = min(1, Date().timeIntervalSince(start) / duration)
+            let e = 1 - pow(1 - p, 3)
+            self.presentedLetter = Self.lerp(fromLetter, letter, e)
+            self.presentedCrop = Self.lerp(fromCrop, cropRect, e)
+            self.needsDisplay = true
+            if p >= 1 {
+                timer.invalidate()
+                self.layoutAnimating = false
+                self.presentedLetter = letter
+                self.presentedCrop = cropRect
+            }
+        }
+        RunLoop.main.add(layoutTimer!, forMode: .common)
+    }
+
+    private static func lerp(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
+        CGRect(
+            x: a.origin.x + (b.origin.x - a.origin.x) * t,
+            y: a.origin.y + (b.origin.y - a.origin.y) * t,
+            width: a.width + (b.width - a.width) * t,
+            height: a.height + (b.height - a.height) * t
+        )
     }
 
     // MARK: - Geometry
@@ -279,70 +429,241 @@ final class CropCanvasView: NSView {
         CropGeometry.viewRect(crop: crop, letter: letter, videoSize: videoSize)
     }
 
-    private func handlePoints(_ r: CGRect) -> [(Mode, CGPoint)] {
-        [(.nw, CGPoint(x: r.minX, y: r.minY)),
-         (.ne, CGPoint(x: r.maxX, y: r.minY)),
-         (.sw, CGPoint(x: r.minX, y: r.maxY)),
-         (.se, CGPoint(x: r.maxX, y: r.maxY))]
+    private func cornerPoints(_ r: CGRect) -> [CGPoint] {
+        [CGPoint(x: r.minX, y: r.minY),
+         CGPoint(x: r.maxX, y: r.minY),
+         CGPoint(x: r.minX, y: r.maxY),
+         CGPoint(x: r.maxX, y: r.maxY)]
     }
 
-    private func handleRect(_ m: Mode, in r: CGRect) -> CGRect {
-        let p = handlePoints(r).first { $0.0 == m }?.1 ?? .zero
+    private func edgeMidpoints(_ r: CGRect) -> [CGPoint] {
+        [CGPoint(x: r.midX, y: r.minY),
+         CGPoint(x: r.maxX, y: r.midY),
+         CGPoint(x: r.midX, y: r.maxY),
+         CGPoint(x: r.minX, y: r.midY)]
+    }
+
+    private func cornerHitRect(_ m: Mode, in r: CGRect) -> CGRect {
+        let p: CGPoint = switch m {
+        case .nw: CGPoint(x: r.minX, y: r.minY)
+        case .ne: CGPoint(x: r.maxX, y: r.minY)
+        case .sw: CGPoint(x: r.minX, y: r.maxY)
+        case .se: CGPoint(x: r.maxX, y: r.maxY)
+        default: .zero
+        }
         let pad: CGFloat = 10
         return CGRect(x: p.x - pad, y: p.y - pad, width: pad * 2, height: pad * 2)
     }
 
-    private func hitHandle(_ m: Mode, in r: CGRect, point: CGPoint) -> Bool {
-        handleRect(m, in: r).contains(point)
+    private func edgeHitRect(_ m: Mode, in r: CGRect) -> CGRect {
+        switch m {
+        case .n: return CGRect(x: r.minX + 10, y: r.minY - edgeHit, width: max(0, r.width - 20), height: edgeHit * 2)
+        case .s: return CGRect(x: r.minX + 10, y: r.maxY - edgeHit, width: max(0, r.width - 20), height: edgeHit * 2)
+        case .w: return CGRect(x: r.minX - edgeHit, y: r.minY + 10, width: edgeHit * 2, height: max(0, r.height - 20))
+        case .e: return CGRect(x: r.maxX - edgeHit, y: r.minY + 10, width: edgeHit * 2, height: max(0, r.height - 20))
+        default: return .zero
+        }
+    }
+
+    private func hitCorner(_ m: Mode, in r: CGRect, point: CGPoint) -> Bool {
+        cornerHitRect(m, in: r).contains(point)
+    }
+
+    private func hitEdge(_ m: Mode, in r: CGRect, point: CGPoint) -> Bool {
+        edgeHitRect(m, in: r).contains(point)
     }
 
     private func beginResize(_ m: Mode) {
         mode = m
         coordinator?.setInteracting(true)
-        let ox = CGFloat(crop.x), oy = CGFloat(crop.y), osz = CGFloat(crop.size)
+        let ox = CGFloat(crop.x), oy = CGFloat(crop.y)
+        let ow = CGFloat(crop.width), oh = CGFloat(crop.height)
         switch m {
-        case .se: anchor = CGPoint(x: ox, y: oy)
-        case .nw: anchor = CGPoint(x: ox + osz, y: oy + osz)
-        case .ne: anchor = CGPoint(x: ox, y: oy + osz)
-        case .sw: anchor = CGPoint(x: ox + osz, y: oy)
+        case .se, .s, .e: anchor = CGPoint(x: ox, y: oy)
+        case .nw, .n, .w: anchor = CGPoint(x: ox + ow, y: oy + oh)
+        case .ne: anchor = CGPoint(x: ox, y: oy + oh)
+        case .sw: anchor = CGPoint(x: ox + ow, y: oy)
         default: break
         }
     }
 
     private func resize(mode: Mode, mouse: CGPoint) -> CropRect {
-        let ax = anchor.x, ay = anchor.y
-        var next = origin
-        var newSize: CGFloat = 0
         switch mode {
-        case .se:
-            newSize = max(mouse.x - ax, mouse.y - ay)
-            next.x = Int(ax.rounded()); next.y = Int(ay.rounded())
-        case .nw:
-            newSize = max(ax - mouse.x, ay - mouse.y)
-            next.x = Int((ax - newSize).rounded()); next.y = Int((ay - newSize).rounded())
-        case .ne:
-            newSize = max(mouse.x - ax, ay - mouse.y)
-            next.x = Int(ax.rounded()); next.y = Int((ay - newSize).rounded())
-        case .sw:
-            newSize = max(ax - mouse.x, mouse.y - ay)
-            next.x = Int((ax - newSize).rounded()); next.y = Int(ay.rounded())
+        case .n, .e, .s, .w:
+            return resizeEdge(mode: mode, mouse: mouse)
+        case .nw, .ne, .sw, .se:
+            return resizeCorner(mode: mode, mouse: mouse)
         default:
             return crop
         }
-        next.size = Int(newSize.rounded())
-        return clampResize(next, mode: mode)
     }
 
-    private var maxSize: Int {
-        Int(min(videoSize.width, videoSize.height))
+    private func resizeCorner(mode: Mode, mouse: CGPoint) -> CropRect {
+        let ax = anchor.x, ay = anchor.y
+        var next = origin
+
+        switch resizeLock {
+        case .square:
+            var side: CGFloat = 0
+            switch mode {
+            case .se: side = max(mouse.x - ax, mouse.y - ay)
+            case .nw: side = max(ax - mouse.x, ay - mouse.y)
+            case .ne: side = max(mouse.x - ax, ay - mouse.y)
+            case .sw: side = max(ax - mouse.x, mouse.y - ay)
+            default: return crop
+            }
+            next.width = Int(side.rounded())
+            next.height = next.width
+            placeCorner(mode: mode, next: &next, ax: ax, ay: ay, w: side, h: side)
+            return clampResize(next, mode: mode)
+
+        case .ratio(let rw, let rh):
+            let ratio = Double(rw) / Double(rh)
+            var w: CGFloat = 0
+            var h: CGFloat = 0
+            switch mode {
+            case .se: w = mouse.x - ax; h = mouse.y - ay
+            case .nw: w = ax - mouse.x; h = ay - mouse.y
+            case .ne: w = mouse.x - ax; h = ay - mouse.y
+            case .sw: w = ax - mouse.x; h = mouse.y - ay
+            default: return crop
+            }
+            if abs(w) / ratio > abs(h) {
+                h = w / ratio
+            } else {
+                w = h * ratio
+            }
+            next.width = max(minCrop, Int(w.rounded()))
+            next.height = max(minCrop, Int(h.rounded()))
+            placeCorner(mode: mode, next: &next, ax: ax, ay: ay, w: w, h: h)
+            return clampResize(next, mode: mode)
+
+        case .free:
+            switch mode {
+            case .se:
+                next.width = Int((mouse.x - ax).rounded())
+                next.height = Int((mouse.y - ay).rounded())
+                next.x = Int(ax.rounded()); next.y = Int(ay.rounded())
+            case .nw:
+                next.width = Int((ax - mouse.x).rounded())
+                next.height = Int((ay - mouse.y).rounded())
+                next.x = Int((ax - CGFloat(next.width)).rounded())
+                next.y = Int((ay - CGFloat(next.height)).rounded())
+            case .ne:
+                next.width = Int((mouse.x - ax).rounded())
+                next.height = Int((ay - mouse.y).rounded())
+                next.x = Int(ax.rounded())
+                next.y = Int((ay - CGFloat(next.height)).rounded())
+            case .sw:
+                next.width = Int((ax - mouse.x).rounded())
+                next.height = Int((mouse.y - ay).rounded())
+                next.x = Int((ax - CGFloat(next.width)).rounded())
+                next.y = Int(ay.rounded())
+            default:
+                return crop
+            }
+            return clampResize(next, mode: mode)
+        }
+    }
+
+    private func placeCorner(mode: Mode, next: inout CropRect, ax: CGFloat, ay: CGFloat, w: CGFloat, h: CGFloat) {
+        switch mode {
+        case .se:
+            next.x = Int(ax.rounded()); next.y = Int(ay.rounded())
+        case .nw:
+            next.x = Int((ax - w).rounded()); next.y = Int((ay - h).rounded())
+        case .ne:
+            next.x = Int(ax.rounded()); next.y = Int((ay - h).rounded())
+        case .sw:
+            next.x = Int((ax - w).rounded()); next.y = Int(ay.rounded())
+        default: break
+        }
+    }
+
+    private func resizeEdge(mode: Mode, mouse: CGPoint) -> CropRect {
+        switch resizeLock {
+        case .free:
+            var next = origin
+            let ax = anchor.x, ay = anchor.y
+            switch mode {
+            case .e:
+                next.width = Int((mouse.x - ax).rounded())
+                next.x = Int(ax.rounded())
+            case .w:
+                next.width = Int((ax - mouse.x).rounded())
+                next.x = Int((ax - CGFloat(next.width)).rounded())
+            case .s:
+                next.height = Int((mouse.y - ay).rounded())
+                next.y = Int(ay.rounded())
+            case .n:
+                next.height = Int((ay - mouse.y).rounded())
+                next.y = Int((ay - CGFloat(next.height)).rounded())
+            default: return crop
+            }
+            return clampResize(next, mode: mode)
+
+        case .square, .ratio:
+            return resizeEdgeLocked(mode: mode, mouse: mouse)
+        }
+    }
+
+    private func lockedRatio() -> Double {
+        if case .ratio(let rw, let rh) = resizeLock { return Double(rw) / Double(rh) }
+        return 1
+    }
+
+    private func resizeEdgeLocked(mode: Mode, mouse: CGPoint) -> CropRect {
+        let ratio = lockedRatio()
+        let maxW = videoSize.width
+        let maxH = videoSize.height
+        let cx = CGFloat(origin.centerX)
+        let cy = CGFloat(origin.centerY)
+        let left = CGFloat(origin.x)
+        let top = CGFloat(origin.y)
+        let right = left + CGFloat(origin.width)
+        let bottom = top + CGFloat(origin.height)
+        let minW = max(CGFloat(minCrop), CGFloat(minCrop) * ratio)
+        let minH = max(CGFloat(minCrop), CGFloat(minCrop) / ratio)
+
+        var w: CGFloat
+        var h: CGFloat
+        var x: CGFloat
+        var y: CGFloat
+
+        switch mode {
+        case .e, .w:
+            w = mode == .e ? mouse.x - left : right - mouse.x
+            let maxHCentered = max(minH, 2 * min(cy, maxH - cy))
+            let maxWFit = min(mode == .e ? maxW - left : right, maxHCentered * ratio)
+            w = min(max(minW, w), maxWFit)
+            h = w / ratio
+            x = mode == .e ? left : right - w
+            y = cy - h / 2
+        case .n, .s:
+            h = mode == .s ? mouse.y - top : bottom - mouse.y
+            let maxWCentered = max(minW, 2 * min(cx, maxW - cx))
+            let maxHFit = min(mode == .s ? maxH - top : bottom, maxWCentered / ratio)
+            h = min(max(minH, h), maxHFit)
+            w = h * ratio
+            y = mode == .s ? top : bottom - h
+            x = cx - w / 2
+        default:
+            return crop
+        }
+
+        var next = origin
+        next.width = max(minCrop, Int(w.rounded()))
+        next.height = max(minCrop, Int(h.rounded()))
+        next.x = Int(x.rounded())
+        next.y = Int(y.rounded())
+        next.x = max(0, min(next.x, Int(maxW) - next.width))
+        next.y = max(0, min(next.y, Int(maxH) - next.height))
+        return next
     }
 
     private func clamp(_ c: CropRect) -> CropRect {
         var c = c
-        guard videoSize.width > 0 else { return c }
-        c.size = max(minCrop, min(c.size, maxSize))
-        c.x = max(0, min(c.x, Int(videoSize.width) - c.size))
-        c.y = max(0, min(c.y, Int(videoSize.height) - c.size))
+        c.clamp(in: videoSize)
         return c
     }
 
@@ -350,32 +671,73 @@ final class CropCanvasView: NSView {
         var c = c
         guard videoSize.width > 0 else { return c }
         let ax = anchor.x, ay = anchor.y
-        let maxS = CGFloat(maxSize)
+        let maxW = videoSize.width
+        let maxH = videoSize.height
+
+        c.width = max(minCrop, c.width)
+        c.height = max(minCrop, c.height)
+
+        let maxWHere: CGFloat
+        let maxHHere: CGFloat
+        switch mode {
+        case .se, .e, .s: maxWHere = maxW - ax; maxHHere = maxH - ay
+        case .nw, .n, .w: maxWHere = ax; maxHHere = ay
+        case .ne: maxWHere = maxW - ax; maxHHere = ay
+        case .sw: maxWHere = ax; maxHHere = maxH - ay
+        default: maxWHere = maxW; maxHHere = maxH
+        }
+
+        switch resizeLock {
+        case .square:
+            var side = CGFloat(min(c.width, c.height))
+            side = min(side, min(maxWHere, maxHHere))
+            side = max(CGFloat(minCrop), side)
+            c.width = Int(side.rounded())
+            c.height = c.width
+        case .ratio(let rw, let rh):
+            let ratio = Double(rw) / Double(rh)
+            var w = Double(c.width)
+            var h = Double(c.height)
+            if w / max(h, 1) > ratio {
+                h = w / ratio
+            } else {
+                w = h * ratio
+            }
+            if w > Double(maxWHere) { w = Double(maxWHere); h = w / ratio }
+            if h > Double(maxHHere) { h = Double(maxHHere); w = h * ratio }
+            c.width = max(minCrop, Int(w.rounded()))
+            c.height = max(minCrop, Int(h.rounded()))
+        case .free:
+            c.width = min(c.width, max(minCrop, Int(maxWHere)))
+            c.height = min(c.height, max(minCrop, Int(maxHHere)))
+        }
+
         switch mode {
         case .se:
-            let maxHere = min(maxS, videoSize.width - ax, videoSize.height - ay)
-            c.size = max(minCrop, min(c.size, Int(maxHere)))
             c.x = Int(ax.rounded()); c.y = Int(ay.rounded())
-        case .nw:
-            let maxHere = min(maxS, ax, ay)
-            c.size = max(minCrop, min(c.size, Int(maxHere)))
-            c.x = Int(ax.rounded()) - c.size
-            c.y = Int(ay.rounded()) - c.size
-        case .ne:
-            let maxHere = min(maxS, videoSize.width - ax, ay)
-            c.size = max(minCrop, min(c.size, Int(maxHere)))
+        case .e:
             c.x = Int(ax.rounded())
-            c.y = Int(ay.rounded()) - c.size
+        case .s:
+            c.y = Int(ay.rounded())
+        case .nw:
+            c.x = Int(ax.rounded()) - c.width
+            c.y = Int(ay.rounded()) - c.height
+        case .w:
+            c.x = Int(ax.rounded()) - c.width
+        case .n:
+            c.y = Int(ay.rounded()) - c.height
+        case .ne:
+            c.x = Int(ax.rounded())
+            c.y = Int(ay.rounded()) - c.height
         case .sw:
-            let maxHere = min(maxS, ax, videoSize.height - ay)
-            c.size = max(minCrop, min(c.size, Int(maxHere)))
-            c.x = Int(ax.rounded()) - c.size
+            c.x = Int(ax.rounded()) - c.width
             c.y = Int(ay.rounded())
         default:
             return clamp(c)
         }
-        c.x = max(0, min(c.x, Int(videoSize.width) - c.size))
-        c.y = max(0, min(c.y, Int(videoSize.height) - c.size))
+
+        c.x = max(0, min(c.x, Int(maxW) - c.width))
+        c.y = max(0, min(c.y, Int(maxH) - c.height))
         return c
     }
 

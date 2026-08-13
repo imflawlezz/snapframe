@@ -20,8 +20,8 @@ enum CropGeometry {
         return CGRect(
             x: letter.minX + CGFloat(crop.x) * scale,
             y: letter.minY + CGFloat(crop.y) * scale,
-            width: CGFloat(crop.size) * scale,
-            height: CGFloat(crop.size) * scale
+            width: CGFloat(crop.width) * scale,
+            height: CGFloat(crop.height) * scale
         )
     }
 }

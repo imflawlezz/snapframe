@@ -11,17 +11,11 @@ struct VideoStage: View {
             VideoPlayerView(player: state.player.avPlayer)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            if state.player.holdsFramePreview, let image = state.player.frameImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-
             if state.cropOverlayVisible {
                 CropOverlayView(
                     videoSize: state.player.videoSize,
                     crop: $state.crop,
+                    resizeLock: state.cropResizeLock,
                     onInteractionChange: { state.setCropInteracting($0) }
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 8))
