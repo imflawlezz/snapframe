@@ -1,13 +1,13 @@
 # Snapframe
 
-**Snapframe** is a native macOS tool for frame-accurate video scrubbing, cue-based navigation, and square crop export.
+**Snapframe** is a native macOS tool for frame-accurate video scrubbing, cue-based navigation, and free-form crop export.
 
-Open a video, jump between marked moments, frame a square crop, and save stills next to the source — without a heavyweight NLE.
+Open a video, jump between marked moments, frame a crop (free, locked ratio, or square), and save stills next to the source — without a heavyweight NLE.
 
 | | |
 |---|---|
 | **Platform** | macOS |
-| **Version** | 1.1.0 |
+| **Version** | 1.2.0 |
 | **License** | [MIT](LICENSE) |
 | **Playback** | AVFoundation |
 
@@ -15,7 +15,7 @@ Open a video, jump between marked moments, frame a square crop, and save stills 
 
 ## Install
 
-1. Open `Snapframe_1.1.0.dmg`.
+1. Open `Snapframe_1.2.0.dmg`.
 2. Drag **Snapframe.app** into **Applications**.
 3. Double-click **Quarantine.command** in the DMG.  
    If macOS blocks it: right-click → **Open** → **Open**.
@@ -36,9 +36,11 @@ Or right-click the app → **Open**.
 
 - Live video stage with frame-accurate scrubbing and still capture
 - Cue list from a sidecar JSON next to the video
-- Square crop overlay — drag, resize, scroll to change size
+- Free-form crop overlay (width × height), optional **aspect lock** / **square**
+- Crop bar: size, center offset, locks, ratio readout
 - Export crops as PNG or JPEG into a `{name}_crops/` folder
-- Timeline with zoom, markers, and frame/time grid
+- Timeline with pan, zoom, follow playhead, markers, and a fixed time/frame grid
+- Transport: playback, frame skip, time skip (−5s…+5s), speed
 - Recents with thumbnails
 - Light / Dark / System appearance
 - Keyboard-first workflow (physical keys, any input layout)
@@ -49,8 +51,9 @@ Or right-click the app → **Open**.
 
 1. **Open** a video (⌘O), drop a file onto the window, or pick a recent item.
 2. Optionally load cues: auto-import `Movie.cues.json` beside the file, or **Import Cues…** (⌘I).
-3. Scrub the timeline; step frames with ← / → (⇧ for ±10).
-4. Show the crop overlay (**C**), place the square, **Save crop** (⌘S).
+3. Scrub the timeline; step frames with ← / → (⇧ for ±10). Click the scrollbar track to jump the viewport.
+4. Show the crop overlay (**C**), place and size the crop, **Save crop** (⌘S).
+   Scroll adjusts height; **⇧scroll** adjusts width. **Aspect lock** (**L**) keeps the current ratio; **Square** (**R**) forces 1:1.
 5. Find exports in `Movie_crops/` next to the source, with `metadata.json`.
 
 ### Supported formats
@@ -79,10 +82,11 @@ Example: [`Examples/Sample.cues.json`](Examples/Sample.cues.json)
 ```text
 Movie_crops/
   crop_001.png
-  crop_002.png
+  crop_002.jpg
   metadata.json
 ```
 
+Each crop stores `x` / `y` / `width` / `height` (legacy square `size` still loads).  
 Example: [`Examples/Sample_crops/metadata.json`](Examples/Sample_crops/metadata.json)
 
 ### Keyboard shortcuts
@@ -102,6 +106,9 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 | ⌫ | Delete active cue |
 | ⇧⌫ | Delete active crop |
 | C | Toggle crop overlay |
+| L | Aspect lock |
+| R | Square proportions |
+| P | Follow playhead |
 | G | Go to timecode |
 | Esc | Close video |
 | ⌘O | Open video |
@@ -125,11 +132,13 @@ Select the **Snapframe** scheme and run (Debug or Release).
 
 ```text
 snapframe/
-  Domain/           entities + ports
-  Application/      use cases
-  Infrastructure/   AVFoundation player, stores, file access
-  Presentation/     SwiftUI + AppKit UI
+  Domain/           entities + ports (CropRepository, CueRepository, ImageEncoding)
+  Application/      use cases (e.g. SaveCropUseCase)
+  Infrastructure/   AVFoundation player, stores, file access, image encode
+  Presentation/     SwiftUI + AppKit UI, AppState composition root
 ```
+
+`AppState` wires concrete Infrastructure types into Application ports. Domain stays Foundation / CoreGraphics only.
 
 ---
 
