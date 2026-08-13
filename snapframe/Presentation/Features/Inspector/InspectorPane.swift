@@ -206,7 +206,7 @@ struct InspectorPane: View {
                     .foregroundStyle(SnapTheme.ink)
                     .lineLimit(1)
                     .layoutPriority(1)
-                Text("\(e.size)px")
+                Text("\(e.width)×\(e.height)")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
                     .foregroundStyle(SnapTheme.inkSecondary)
                 Spacer(minLength: 0)
