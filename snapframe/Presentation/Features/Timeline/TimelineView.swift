@@ -8,6 +8,7 @@ struct TimelineView: View {
     var markers: [TimelineMarker]
     var seekInput: Binding<String>
     var jumpMode: Binding<JumpMode>
+    @Binding var followPlayhead: Bool
     var onSeek: (Double, Bool) -> Void
     var onMarker: (String) -> Void
     var onJumpSubmit: () -> Void
@@ -19,12 +20,16 @@ struct TimelineView: View {
     @State private var viewStart: Double = 0
     @State private var scrollbarDragging = false
     @State private var scrollbarDragOrigin: Double = 0
+    @State private var lastScrubPreviewAt: Date = .distantPast
 
     private let rulerHeight: CGFloat = 24
     private let trackHeight: CGFloat = 40
     private let scrollbarHeight: CGFloat = 12
+    private let followMarginFraction = 0.14
 
-    private var shown: Double { dragging ? dragPosition : position }
+    private var shown: Double {
+        dragging ? dragPosition : snapFrame(position)
+    }
     private var visibleDuration: Double {
         guard duration > 0 else { return 1 }
         return max(duration / max(zoom, 1), 1 / max(fps, 1))
@@ -47,7 +52,16 @@ struct TimelineView: View {
             viewStart = 0
         }
         .onChange(of: position) { _, pos in
-            if !isPlaying { keepPlayheadVisible(pos) }
+            if followPlayhead {
+                keepPlayheadVisible(snapFrame(pos))
+            }
+        }
+        .onChange(of: followPlayhead) { _, following in
+            if following {
+                withAnimation(SnapMotion.scroll) {
+                    revealPlayhead(shown)
+                }
+            }
         }
     }
 
@@ -55,6 +69,8 @@ struct TimelineView: View {
 
     private var seekRow: some View {
         HStack(spacing: 8) {
+            followPlayheadButton
+
             SegmentToggle(selection: jumpMode)
 
             DigitsTextField(
@@ -109,6 +125,23 @@ struct TimelineView: View {
         }
     }
 
+    private var followPlayheadButton: some View {
+        Button {
+            followPlayhead.toggle()
+        } label: {
+            Image(systemName: "guidepoint.vertical.arrowtriangle.forward")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .buttonStyle(ToolButtonStyle(
+            kind: followPlayhead ? .accent : .normal,
+            width: 28,
+            height: 26
+        ))
+        .disabled(duration <= 0 || !canPan)
+        .opacity(duration <= 0 || !canPan ? 0.4 : 1)
+        .snapTooltip("Follow playhead", shortcut: "P")
+    }
+
     private var zoomControls: some View {
         HStack(spacing: 12) {
             Text(zoomLabel)
@@ -117,7 +150,9 @@ struct TimelineView: View {
                 .frame(width: 36, alignment: .trailing)
 
             HStack(spacing: 4) {
-            Button { adjustZoom(by: 0.8, anchor: shown) } label: {
+            Button {
+                withAnimation(SnapMotion.scroll) { adjustZoom(by: 0.8, anchor: shown) }
+            } label: {
                 Image(systemName: "minus.magnifyingglass")
                     .font(.system(size: 11, weight: .semibold))
             }
@@ -125,7 +160,9 @@ struct TimelineView: View {
             .disabled(duration <= 0)
             .snapTooltip("Zoom out", shortcut: "⇧Scroll")
 
-            Button { resetZoom() } label: {
+            Button {
+                withAnimation(SnapMotion.scroll) { resetZoom() }
+            } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 11, weight: .semibold))
             }
@@ -133,7 +170,9 @@ struct TimelineView: View {
             .disabled(duration <= 0 || zoom <= 1.01)
             .snapTooltip("Fit timeline to window")
 
-            Button { adjustZoom(by: 1.25, anchor: shown) } label: {
+            Button {
+                withAnimation(SnapMotion.scroll) { adjustZoom(by: 1.25, anchor: shown) }
+            } label: {
                 Image(systemName: "plus.magnifyingglass")
                     .font(.system(size: 11, weight: .semibold))
             }
@@ -169,17 +208,17 @@ struct TimelineView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .strokeBorder(SnapTheme.stroke, lineWidth: 1)
                     )
-                    .frame(height: fullHeight)
 
-                rulerLayer(track: track, fullHeight: fullHeight)
+                rulerTicks(track: track, fullHeight: fullHeight)
                 trackLayer(track: track)
+                rulerLabels(track: track, fullHeight: fullHeight)
                 markerLayer(track: track)
                 playheadLayer(track: track, fullHeight: fullHeight)
-
-                ScrollWheelCapture { delta, shift, localX in
-                    handleWheel(delta: delta, shift: shift, localX: localX, trackWidth: width)
+                ScrollWheelCapture { event in
+                    handleWheel(event, trackWidth: width)
                 }
             }
+            .frame(width: width, height: fullHeight)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
             .gesture(scrubGesture(track: track))
@@ -203,27 +242,14 @@ struct TimelineView: View {
                         RoundedRectangle(cornerRadius: 4)
                             .strokeBorder(SnapTheme.stroke.opacity(0.45), lineWidth: 0.5)
                     )
+                    .contentShape(Rectangle())
+                    .gesture(scrollbarGesture(width: width, thumbWidth: metrics.thumbWidth, jumpOnDown: true))
 
                 RoundedRectangle(cornerRadius: 3)
                     .fill(SnapTheme.slate.opacity(scrollbarDragging ? 0.7 : 0.45))
                     .frame(width: metrics.thumbWidth, height: scrollbarHeight - 4)
                     .offset(x: metrics.thumbX, y: 2)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if !scrollbarDragging {
-                                    scrollbarDragging = true
-                                    scrollbarDragOrigin = viewStart
-                                }
-                                let span = max(duration - visibleDuration, 0)
-                                let travel = max(1, width - metrics.thumbWidth)
-                                let deltaT = Double(value.translation.width / travel) * span
-                                viewStart = clampStart(scrollbarDragOrigin + deltaT)
-                            }
-                            .onEnded { _ in
-                                scrollbarDragging = false
-                            }
-                    )
+                    .gesture(scrollbarGesture(width: width, thumbWidth: metrics.thumbWidth, jumpOnDown: false))
 
                 RoundedRectangle(cornerRadius: 1)
                     .fill(SnapTheme.timelinePlayheadStem)
@@ -238,6 +264,40 @@ struct TimelineView: View {
         }
         .frame(height: scrollbarHeight)
         .padding(.top, 2)
+    }
+
+    private func scrollbarGesture(width: CGFloat, thumbWidth: CGFloat, jumpOnDown: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                guard canPan else { return }
+                if !scrollbarDragging {
+                    scrollbarDragging = true
+                    if followPlayhead { followPlayhead = false }
+                    if jumpOnDown {
+                        viewStart = viewStart(placingThumbAt: value.startLocation.x, width: width, thumbWidth: thumbWidth)
+                    }
+                    scrollbarDragOrigin = viewStart
+                }
+                let span = max(duration - visibleDuration, 0)
+                let travel = max(1, width - thumbWidth)
+                let deltaT = Double(value.translation.width / travel) * span
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    viewStart = clampStart(scrollbarDragOrigin + deltaT)
+                }
+            }
+            .onEnded { _ in
+                scrollbarDragging = false
+            }
+    }
+
+    private func viewStart(placingThumbAt x: CGFloat, width: CGFloat, thumbWidth: CGFloat) -> Double {
+        let travel = max(1, width - thumbWidth)
+        let thumbX = min(max(0, x - thumbWidth / 2), travel)
+        let span = max(duration - visibleDuration, 0)
+        guard span > 0 else { return 0 }
+        return clampStart(Double(thumbX / travel) * span)
     }
 
     private struct ScrollbarMetrics {
@@ -266,17 +326,14 @@ struct TimelineView: View {
 
     // MARK: - Layers
 
-    private func rulerLayer(track: CGRect, fullHeight: CGFloat) -> some View {
+    private func rulerTicks(track: CGRect, fullHeight: CGFloat) -> some View {
         let layout = rulerLayout(trackWidth: track.width)
         return Canvas { context, _ in
-            guard duration > 0 else { return }
-
-            var t = layout.start
-            var labelIndex = 0
-            var lastLabelX: CGFloat = -1000
-            while t <= visibleEnd + layout.minorStep * 0.5 {
+            guard duration > 0, layout.minorStep > 0 else { return }
+            for k in layout.firstTick...layout.lastTick {
+                let t = Double(k) * layout.minorStep
                 let x = xPos(t, track: track)
-                let major = labelIndex % layout.majorEvery == 0
+                let major = k % layout.labelEveryTicks == 0
                 let tickH: CGFloat = major ? 9 : 4
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: 2))
@@ -286,68 +343,93 @@ struct TimelineView: View {
                     with: .color(major ? SnapTheme.timelineGridMajor : SnapTheme.timelineGridMinor),
                     lineWidth: major ? 1 : 0.5
                 )
-
-                if major, layout.showLabels, x > 28, x < track.width - 28,
-                   x - lastLabelX >= layout.minLabelPx {
-                    context.draw(
-                        Text(Timecode.format(t))
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(SnapTheme.inkSecondary),
-                        at: CGPoint(x: x, y: 13),
-                        anchor: .center
-                    )
-                    lastLabelX = x
-                }
-
-                t += layout.minorStep
-                labelIndex += 1
             }
-
             var baseline = Path()
             baseline.move(to: CGPoint(x: 0, y: rulerHeight - 0.5))
             baseline.addLine(to: CGPoint(x: track.width, y: rulerHeight - 0.5))
             context.stroke(baseline, with: .color(SnapTheme.stroke.opacity(0.6)), lineWidth: 1)
         }
-        .frame(height: fullHeight)
+        .allowsHitTesting(false)
+    }
+
+    private func rulerLabels(track: CGRect, fullHeight: CGFloat) -> some View {
+        let layout = rulerLayout(trackWidth: track.width)
+        let showFrames = jumpMode.wrappedValue == .frame
+        return ZStack(alignment: .topLeading) {
+            if duration > 0, layout.labelStep > 0, layout.firstLabel <= layout.lastLabel {
+                ForEach(layout.firstLabel...layout.lastLabel, id: \.self) { k in
+                    let t = Double(k) * layout.labelStep
+                    Text(showFrames
+                         ? "f\(Timecode.frameIndex(at: t, fps: fps))"
+                         : Timecode.format(t))
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(SnapTheme.inkSecondary)
+                        .position(x: xPos(t, track: track), y: 13)
+                }
+            }
+        }
+        .frame(width: track.width, height: fullHeight)
+        .animation(nil, value: viewStart)
         .allowsHitTesting(false)
     }
 
     private struct RulerLayout {
         var minorStep: Double
-        var majorEvery: Int
-        var showLabels: Bool
-        var minLabelPx: CGFloat
-        var start: Double
+        var labelStep: Double
+        var labelEveryTicks: Int
+        var firstTick: Int
+        var lastTick: Int
+        var firstLabel: Int
+        var lastLabel: Int
     }
 
     private func rulerLayout(trackWidth: CGFloat) -> RulerLayout {
-        let minLabelPx: CGFloat = 96
-        let minMajorPx: CGFloat = 28
-        let frameDur = 1 / max(fps, 24)
-        var candidates: [Double] = [
-            frameDur, frameDur * 2, frameDur * 5, frameDur * 10,
-            0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600
-        ].uniqued().sorted()
+        let minLabelPx: CGFloat = jumpMode.wrappedValue == .frame ? 52 : 84
+        let minTickPx: CGFloat = 8
+        func px(_ step: Double) -> CGFloat {
+            CGFloat(step / max(visibleDuration, 1e-9)) * trackWidth
+        }
 
-        var minorStep = max(duration / 10, frameDur)
-        for step in candidates {
-            let px = CGFloat(step / visibleDuration) * trackWidth
-            if px >= minMajorPx {
+        let labelStep = niceRulerStep(minPx: minLabelPx, px: px)
+        var minorStep = labelStep
+        for divisor in [10, 5, 4, 2] {
+            let step = labelStep / Double(divisor)
+            if step > 0, px(step) >= minTickPx {
                 minorStep = step
                 break
             }
         }
 
-        let majorPx = CGFloat(minorStep / visibleDuration) * trackWidth
-        let majorEvery = max(1, Int(ceil(minLabelPx / max(majorPx, 1))))
-        let start = floor(viewStart / minorStep) * minorStep
+        let labelEveryTicks = max(1, Int((labelStep / minorStep).rounded()))
+        let firstTick = max(0, Int(floor(viewStart / minorStep)) - 1)
+        let lastTick = max(firstTick, Int(ceil(visibleEnd / minorStep)) + 1)
+        let firstLabel = max(0, Int(floor(viewStart / labelStep)) - 1)
+        let durationCap = labelStep > 0 ? Int(floor((duration + 1e-9) / labelStep)) : 0
+        let lastLabel = min(durationCap, max(firstLabel, Int(ceil(visibleEnd / labelStep)) + 1))
         return RulerLayout(
             minorStep: minorStep,
-            majorEvery: majorEvery,
-            showLabels: duration > 0,
-            minLabelPx: minLabelPx,
-            start: start
+            labelStep: labelStep,
+            labelEveryTicks: labelEveryTicks,
+            firstTick: firstTick,
+            lastTick: lastTick,
+            firstLabel: firstLabel,
+            lastLabel: lastLabel
         )
+    }
+
+    private func niceRulerStep(minPx: CGFloat, px: (Double) -> CGFloat) -> Double {
+        let frameDur = fps > 0 ? 1 / fps : 1 / 24
+        if jumpMode.wrappedValue == .frame {
+            for n in [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000] {
+                let step = Double(n) * frameDur
+                if px(step) >= minPx { return step }
+            }
+        }
+        let steps: [Double] = [
+            0.001, 0.002, 0.005, 0.01, 0.02, 0.05,
+            0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600
+        ]
+        return steps.first { px($0) >= minPx } ?? steps.last!
     }
 
     private func trackLayer(track: CGRect) -> some View {
@@ -361,12 +443,15 @@ struct TimelineView: View {
             )
 
             let timePx = CGFloat(layout.minorStep / visibleDuration) * track.width
-            if timePx >= 3 {
-                var t = layout.start
-                var tickIndex = 0
-                while t <= visibleEnd + layout.minorStep * 0.5 {
+            let frameDur = fps > 0 ? 1 / fps : 0
+            let ppf = frameDur > 0 ? track.width / visibleDuration * frameDur : 0
+            let showFrames = ppf >= 10
+
+            if !showFrames, timePx >= 3 {
+                for k in layout.firstTick...layout.lastTick {
+                    let t = Double(k) * layout.minorStep
                     let x = xPos(t, track: track)
-                    let major = tickIndex % layout.majorEvery == 0
+                    let major = k % layout.labelEveryTicks == 0
                     var path = Path()
                     path.move(to: CGPoint(x: x, y: track.minY + 2))
                     path.addLine(to: CGPoint(x: x, y: track.maxY - 2))
@@ -375,23 +460,19 @@ struct TimelineView: View {
                         with: .color(major ? SnapTheme.timelineGridMajor : SnapTheme.timelineGridMinor),
                         lineWidth: major ? 1 : 0.5
                     )
-                    t += layout.minorStep
-                    tickIndex += 1
                 }
             }
 
-            if fps > 0 {
-                let frameDur = 1 / fps
-                let ppf = track.width / visibleDuration * frameDur
-                if ppf >= 10 {
-                    var t = ceil(viewStart / frameDur) * frameDur
-                    while t <= visibleEnd {
-                        let x = xPos(t, track: track)
+            if showFrames {
+                let startFrame = Int(ceil(viewStart * fps - 1e-9))
+                let endFrame = Int(floor(visibleEnd * fps + 1e-9))
+                if startFrame <= endFrame {
+                    for frame in startFrame...endFrame {
+                        let x = xPos(Timecode.seconds(forFrame: frame, fps: fps), track: track)
                         var path = Path()
                         path.move(to: CGPoint(x: x, y: track.minY + 2))
                         path.addLine(to: CGPoint(x: x, y: track.maxY - 2))
                         context.stroke(path, with: .color(SnapTheme.timelineGridMinor.opacity(0.55)), lineWidth: 0.5)
-                        t += frameDur
                     }
                 }
             }
@@ -409,25 +490,22 @@ struct TimelineView: View {
     }
 
     private func playheadLayer(track: CGRect, fullHeight: CGFloat) -> some View {
-        Group {
-            if duration > 0 {
-                let x = xPos(shown, track: track)
-                ZStack {
-                    Path { path in
-                        path.move(to: CGPoint(x: x - 5, y: 2))
-                        path.addLine(to: CGPoint(x: x + 5, y: 2))
-                        path.addLine(to: CGPoint(x: x, y: 9))
-                        path.closeSubpath()
-                    }
-                    .fill(SnapTheme.accent)
+        let x = xPos(shown, track: track)
+        return Canvas { context, _ in
+            guard duration > 0 else { return }
+            var stem = Path()
+            stem.move(to: CGPoint(x: x, y: 2))
+            stem.addLine(to: CGPoint(x: x, y: fullHeight - 1))
+            context.stroke(stem, with: .color(SnapTheme.timelinePlayheadStem), lineWidth: 1)
 
-                    Rectangle()
-                        .fill(SnapTheme.timelinePlayheadStem)
-                        .frame(width: 2, height: fullHeight - 2)
-                        .position(x: x, y: fullHeight / 2 + 1)
-                }
-            }
+            var head = Path()
+            head.move(to: CGPoint(x: x - 5, y: 2))
+            head.addLine(to: CGPoint(x: x + 5, y: 2))
+            head.addLine(to: CGPoint(x: x, y: 9))
+            head.closeSubpath()
+            context.fill(head, with: .color(SnapTheme.accent))
         }
+        .frame(height: fullHeight)
         .allowsHitTesting(false)
     }
 
@@ -454,7 +532,11 @@ struct TimelineView: View {
                 }
                 if jumpedToMarker { return }
                 dragPosition = t
-                onSeek(t, false)
+                let now = Date()
+                if now.timeIntervalSince(lastScrubPreviewAt) >= (1.0 / 60.0) {
+                    lastScrubPreviewAt = now
+                    onSeek(t, false)
+                }
             }
             .onEnded { value in
                 guard duration > 0 else { return }
@@ -469,21 +551,34 @@ struct TimelineView: View {
             }
     }
 
-    private func handleWheel(delta: CGFloat, shift: Bool, localX: CGFloat, trackWidth: CGFloat) {
+    private func handleWheel(_ event: WheelScrollEvent, trackWidth: CGFloat) {
         guard duration > 0 else { return }
-        if shift {
-            zoomAtCursor(delta: delta, cursorX: localX, trackWidth: trackWidth)
-        } else if canPan {
-            let panAmount = visibleDuration * 0.08 * Double(delta)
-            viewStart = clampStart(viewStart - panAmount)
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            if event.shiftHeld {
+                zoomAtCursor(
+                    delta: event.delta,
+                    cursorX: event.localX,
+                    trackWidth: trackWidth
+                )
+            } else if canPan {
+                if followPlayhead { followPlayhead = false }
+                let panAmount = visibleDuration * Double(event.delta) / Double(max(trackWidth, 1))
+                viewStart = clampStart(viewStart - panAmount)
+            }
         }
     }
 
     private func zoomAtCursor(delta: CGFloat, cursorX: CGFloat, trackWidth: CGFloat) {
         let anchorFrac = Double(min(1, max(0, cursorX / trackWidth)))
         let anchorTime = viewStart + anchorFrac * visibleDuration
-        let factor = delta > 0 ? 1.12 : 0.89
-        adjustZoom(to: min(512, max(1, zoom * factor)), anchor: anchorTime, anchorFrac: anchorFrac)
+        let factor = exp(Double(delta) * 0.0035)
+        adjustZoom(
+            to: min(512, max(1, zoom * factor)),
+            anchor: anchorTime,
+            anchorFrac: anchorFrac
+        )
     }
 
     private func adjustZoom(by factor: Double, anchor: Double) {
@@ -504,13 +599,27 @@ struct TimelineView: View {
     }
 
     private func keepPlayheadVisible(_ pos: Double) {
-        guard canPan, !dragging else { return }
-        let margin = visibleDuration * 0.08
+        guard followPlayhead, canPan, !dragging, !scrollbarDragging else { return }
+        let margin = visibleDuration * followMarginFraction
+        let target: Double?
         if pos < viewStart + margin {
-            viewStart = clampStart(pos - margin)
+            target = clampStart(pos - margin)
         } else if pos > visibleEnd - margin {
-            viewStart = clampStart(pos - visibleDuration + margin)
+            target = clampStart(pos - visibleDuration + margin)
+        } else {
+            target = nil
         }
+        guard let target, abs(target - viewStart) > 1e-4 else { return }
+        var transaction = Transaction()
+        transaction.animation = isPlaying ? nil : SnapMotion.scroll
+        withTransaction(transaction) {
+            viewStart = target
+        }
+    }
+
+    private func revealPlayhead(_ pos: Double) {
+        guard canPan else { return }
+        viewStart = clampStart(pos - visibleDuration * 0.35)
     }
 
     // MARK: - Geometry
@@ -523,13 +632,12 @@ struct TimelineView: View {
     private func xPos(_ t: Double, track: CGRect) -> CGFloat {
         guard visibleDuration > 0 else { return track.minX }
         let frac = (t - viewStart) / visibleDuration
-        return track.minX + track.width * CGFloat(min(1, max(0, frac)))
+        return track.minX + track.width * CGFloat(frac)
     }
 
     private func snapFrame(_ t: Double) -> Double {
         guard fps > 0 else { return t }
-        let frame = round(t * fps)
-        return min(max(0, frame / fps), max(0, duration - 1 / fps))
+        return Timecode.snapped(seconds: t, fps: fps, duration: duration)
     }
 
     private func clampStart(_ start: Double) -> Double {
@@ -557,13 +665,6 @@ struct TimelineView: View {
                 .frame(width: m.kind == .cueActive ? 2 : 1.5, height: track.height - 4)
         }
         .position(x: x, y: track.midY)
-    }
-}
-
-private extension Array where Element == Double {
-    func uniqued() -> [Double] {
-        var seen = Set<Double>()
-        return filter { seen.insert($0).inserted }
     }
 }
 
