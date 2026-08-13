@@ -51,4 +51,16 @@ enum Timecode {
         guard fps > 0, index >= 0 else { return 0 }
         return Double(index) / fps
     }
+
+    static func snapped(seconds: Double, fps: Double, duration: Double = .infinity) -> Double {
+        guard fps > 0 else { return max(0, seconds) }
+        let maxFrame: Int
+        if duration.isFinite, duration > 0 {
+            maxFrame = max(0, Int(floor((duration - 1e-9) * fps)))
+        } else {
+            maxFrame = .max
+        }
+        let frame = min(maxFrame, max(0, frameIndex(at: seconds, fps: fps)))
+        return Self.seconds(forFrame: frame, fps: fps)
+    }
 }
