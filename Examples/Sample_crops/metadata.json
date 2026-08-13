@@ -1,6 +1,6 @@
 {
-  "source": "Sample.mkv",
-  "source_path": "/Users/you/Videos/Sample.mkv",
+  "source": "Sample.mp4",
+  "source_path": "/Users/you/Videos/Sample.mp4",
   "crops": [
     {
       "file": "crop_001.png",
@@ -9,7 +9,8 @@
       "crop": {
         "x": 640,
         "y": 200,
-        "size": 480
+        "width": 480,
+        "height": 480
       },
       "video_size": {
         "width": 1920,
@@ -23,7 +24,8 @@
       "crop": {
         "x": 820,
         "y": 160,
-        "size": 360
+        "width": 640,
+        "height": 360
       },
       "video_size": {
         "width": 1920,

@@ -7,7 +7,8 @@ struct CropEntry: Codable, Identifiable, Equatable {
     var timecodeSeconds: Double
     var x: Int
     var y: Int
-    var size: Int
+    var width: Int
+    var height: Int
     var videoWidth: Int
     var videoHeight: Int
 
@@ -17,7 +18,7 @@ struct CropEntry: Codable, Identifiable, Equatable {
         case crop, videoSize = "video_size"
     }
 
-    enum CropKeys: String, CodingKey { case x, y, size }
+    enum CropKeys: String, CodingKey { case x, y, width, height, size }
     enum SizeKeys: String, CodingKey { case width, height }
 
     init(
@@ -26,7 +27,8 @@ struct CropEntry: Codable, Identifiable, Equatable {
         timecodeSeconds: Double,
         x: Int,
         y: Int,
-        size: Int,
+        width: Int,
+        height: Int,
         videoWidth: Int,
         videoHeight: Int
     ) {
@@ -35,7 +37,8 @@ struct CropEntry: Codable, Identifiable, Equatable {
         self.timecodeSeconds = timecodeSeconds
         self.x = x
         self.y = y
-        self.size = size
+        self.width = width
+        self.height = height
         self.videoWidth = videoWidth
         self.videoHeight = videoHeight
     }
@@ -48,7 +51,14 @@ struct CropEntry: Codable, Identifiable, Equatable {
         let crop = try c.nestedContainer(keyedBy: CropKeys.self, forKey: .crop)
         x = try crop.decode(Int.self, forKey: .x)
         y = try crop.decode(Int.self, forKey: .y)
-        size = try crop.decode(Int.self, forKey: .size)
+        if crop.contains(.width), crop.contains(.height) {
+            width = try crop.decode(Int.self, forKey: .width)
+            height = try crop.decode(Int.self, forKey: .height)
+        } else {
+            let size = try crop.decode(Int.self, forKey: .size)
+            width = size
+            height = size
+        }
         let vs = try c.nestedContainer(keyedBy: SizeKeys.self, forKey: .videoSize)
         videoWidth = try vs.decode(Int.self, forKey: .width)
         videoHeight = try vs.decode(Int.self, forKey: .height)
@@ -62,7 +72,8 @@ struct CropEntry: Codable, Identifiable, Equatable {
         var crop = c.nestedContainer(keyedBy: CropKeys.self, forKey: .crop)
         try crop.encode(x, forKey: .x)
         try crop.encode(y, forKey: .y)
-        try crop.encode(size, forKey: .size)
+        try crop.encode(width, forKey: .width)
+        try crop.encode(height, forKey: .height)
         var vs = c.nestedContainer(keyedBy: SizeKeys.self, forKey: .videoSize)
         try vs.encode(videoWidth, forKey: .width)
         try vs.encode(videoHeight, forKey: .height)
