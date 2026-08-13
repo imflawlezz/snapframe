@@ -33,7 +33,7 @@ struct DigitsTextField: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSTextField, context: Context) {
         context.coordinator.parent = self
-        if nsView.stringValue != text, nsView.currentEditor() == nil {
+        if nsView.currentEditor() == nil, nsView.stringValue != text {
             nsView.stringValue = text
         }
         nsView.placeholderString = placeholder
@@ -44,6 +44,7 @@ struct DigitsTextField: NSViewRepresentable {
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: DigitsTextField
+        private var isCommitting = false
 
         init(_ parent: DigitsTextField) {
             self.parent = parent
@@ -67,12 +68,12 @@ struct DigitsTextField: NSViewRepresentable {
         }
 
         func controlTextDidEndEditing(_ obj: Notification) {
-            parent.onCommit()
+            commit()
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                parent.onCommit()
+                commit()
                 control.window?.makeFirstResponder(nil)
                 return true
             }
@@ -81,6 +82,13 @@ struct DigitsTextField: NSViewRepresentable {
                 return true
             }
             return false
+        }
+
+        private func commit() {
+            guard !isCommitting else { return }
+            isCommitting = true
+            defer { isCommitting = false }
+            parent.onCommit()
         }
     }
 
@@ -106,7 +114,8 @@ private final class SelectAllTextField: NSTextField {
         let ok = super.becomeFirstResponder()
         if ok, onSelectAllOnFocus {
             DispatchQueue.main.async { [weak self] in
-                self?.currentEditor()?.selectAll(nil)
+                guard let self, self.currentEditor() != nil else { return }
+                self.currentEditor()?.selectAll(nil)
             }
         }
         return ok
@@ -114,9 +123,10 @@ private final class SelectAllTextField: NSTextField {
 
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
-        if onSelectAllOnFocus, let editor = currentEditor() {
-            DispatchQueue.main.async {
-                editor.selectAll(nil)
+        if onSelectAllOnFocus {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.currentEditor() != nil else { return }
+                self.currentEditor()?.selectAll(nil)
             }
         }
     }
