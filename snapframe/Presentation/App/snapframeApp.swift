@@ -92,21 +92,13 @@ struct snapframeApp: App {
                 Button("Forward 10 Frames") { state.frameStep(10) }
                     .keyboardShortcut(.rightArrow, modifiers: [.shift])
                 Divider()
-                Button("Seek Backward 1s") {
-                    state.player.seek(seconds: state.player.position - 1, precise: true)
-                }
+                Button("Seek Backward 1s") { state.seekStep(seconds: -1) }
                 .keyboardShortcut(.leftArrow, modifiers: [.option])
-                Button("Seek Forward 1s") {
-                    state.player.seek(seconds: state.player.position + 1, precise: true)
-                }
+                Button("Seek Forward 1s") { state.seekStep(seconds: 1) }
                 .keyboardShortcut(.rightArrow, modifiers: [.option])
-                Button("Seek Backward 5s") {
-                    state.player.seek(seconds: state.player.position - 5, precise: true)
-                }
+                Button("Seek Backward 5s") { state.seekStep(seconds: -5) }
                 .keyboardShortcut(.leftArrow, modifiers: [.option, .shift])
-                Button("Seek Forward 5s") {
-                    state.player.seek(seconds: state.player.position + 5, precise: true)
-                }
+                Button("Seek Forward 5s") { state.seekStep(seconds: 5) }
                 .keyboardShortcut(.rightArrow, modifiers: [.option, .shift])
                 Divider()
                 Button("Speed 0.5×") { state.player.setSpeed(0.5) }
@@ -115,6 +107,9 @@ struct snapframeApp: App {
                     .keyboardShortcut("2", modifiers: [])
                 Button("Speed 2×") { state.player.setSpeed(2) }
                     .keyboardShortcut("3", modifiers: [])
+                Divider()
+                Button("Follow Playhead") { state.followPlayhead.toggle() }
+                    .keyboardShortcut("p", modifiers: [])
             }
             CommandMenu("Cues") {
                 Button("Previous Cue") { state.prevCue() }
@@ -127,6 +122,10 @@ struct snapframeApp: App {
             CommandMenu("Crops") {
                 Button("Toggle Crop Overlay") { state.cropOverlayVisible.toggle() }
                     .keyboardShortcut("c", modifiers: [])
+                Button("Aspect Lock") { state.toggleCropRatioLock() }
+                    .keyboardShortcut("l", modifiers: [])
+                Button("Square Proportions") { state.toggleCropSquareLock() }
+                    .keyboardShortcut("r", modifiers: [])
                 Button("Delete Active Crop") { state.deleteActiveCrop() }
                     .keyboardShortcut(.delete, modifiers: .shift)
             }
