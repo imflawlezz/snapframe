@@ -18,9 +18,23 @@ final class AppState {
     var errorMessage: String?
     var inspectorVisible = true
     var cropOverlayVisible = true
-    var cropSizeText = "320"
+    var cropSquareLocked = false
+    var cropRatioLocked = false
+    var cropLockedRatioW = 16
+    var cropLockedRatioH = 9
+    var cropWidthText = "320"
+    var cropResizeLock: CropResizeLock {
+        if cropSquareLocked { return .square }
+        if cropRatioLocked {
+            return .ratio(width: max(1, cropLockedRatioW), height: max(1, cropLockedRatioH))
+        }
+        return .free
+    }
+
+    var cropHeightText = "320"
     var cropOffsetXText = "0"
     var cropOffsetYText = "0"
+    var followPlayhead = true
 
     var isLoadingVideo = false
     var loadProgressMessage = ""
@@ -31,7 +45,6 @@ final class AppState {
 
     private var loadTask: Task<Void, Never>?
     private var didCenterCrop = false
-    private var lastScrubPreviewAt: Date = .distantPast
 
     static let supportedFormats = ["MP4", "MOV", "M4V"]
 
@@ -223,6 +236,13 @@ final class AppState {
         guard size.width > 0, size.height > 0 else { return }
         if !didCenterCrop {
             crop.center(in: size)
+            let w = max(1, crop.width)
+            let h = max(1, crop.height)
+            var a = w, b = h
+            while b != 0 { (a, b) = (b, a % b) }
+            let g = max(a, 1)
+            cropLockedRatioW = w / g
+            cropLockedRatioH = h / g
             didCenterCrop = true
         } else {
             crop.clamp(in: size)
@@ -231,7 +251,8 @@ final class AppState {
     }
 
     func syncCropFieldsFromRect() {
-        cropSizeText = "\(crop.size)"
+        cropWidthText = "\(crop.width)"
+        cropHeightText = "\(crop.height)"
         let off = crop.centerOffset(in: player.videoSize)
         cropOffsetXText = "\(off.dx)"
         cropOffsetYText = "\(off.dy)"
@@ -240,7 +261,8 @@ final class AppState {
     func applyCropFields() {
         let vs = player.videoSize
         guard vs.width > 0, vs.height > 0 else { return }
-        guard let size = Int(cropSizeText.trimmingCharacters(in: .whitespaces)),
+        guard let width = Int(cropWidthText.trimmingCharacters(in: .whitespaces)),
+              let height = Int(cropHeightText.trimmingCharacters(in: .whitespaces)),
               let dx = Int(cropOffsetXText.trimmingCharacters(in: .whitespaces)),
               let dy = Int(cropOffsetYText.trimmingCharacters(in: .whitespaces)) else {
             errorMessage = "Crop fields must be integers."
@@ -248,10 +270,48 @@ final class AppState {
             return
         }
         var next = crop
-        next.setSize(size, in: vs)
+        let lock = cropResizeLock
+        let wChanged = width != crop.width
+        let hChanged = height != crop.height
+        if lock != .free {
+            if hChanged && !wChanged {
+                next.setHeight(height, in: vs, lock: lock)
+            } else {
+                next.setWidth(width, in: vs, lock: lock)
+            }
+        } else {
+            next.setWidth(width, in: vs, lock: .free)
+            next.setHeight(height, in: vs, lock: .free)
+        }
         next.setCenterOffset(dx: dx, dy: dy, in: vs)
         crop = next
         syncCropFieldsFromRect()
+    }
+
+    func toggleCropRatioLock() {
+        cropRatioLocked.toggle()
+        if cropRatioLocked {
+            cropSquareLocked = false
+            let w = max(1, crop.width)
+            let h = max(1, crop.height)
+            var a = w, b = h
+            while b != 0 { (a, b) = (b, a % b) }
+            let g = max(a, 1)
+            cropLockedRatioW = w / g
+            cropLockedRatioH = h / g
+        }
+    }
+
+    func toggleCropSquareLock() {
+        cropSquareLocked.toggle()
+        if cropSquareLocked {
+            cropRatioLocked = false
+            var next = crop
+            let side = max(16, min(next.width, next.height))
+            next.setWidth(side, in: player.videoSize, lock: .square)
+            crop = next
+            syncCropFieldsFromRect()
+        }
     }
 
     func importCues() {
@@ -302,6 +362,12 @@ final class AppState {
     func frameStep(_ n: Int) {
         player.frameStep(n)
         syncSeekInputFromPlayer()
+    }
+
+    func seekStep(seconds delta: Double) {
+        guard player.duration > 0 else { return }
+        let target = min(max(0, player.position + delta), max(0, player.duration - 0.001))
+        seekTo(seconds: target, precise: true)
     }
 
     func gotoCue(_ id: String) {
@@ -360,7 +426,7 @@ final class AppState {
         activeCropIndex = index
         player.pause(true)
         player.seek(seconds: entry.timecodeSeconds, precise: true)
-        crop = CropRect(x: entry.x, y: entry.y, size: entry.size)
+        crop = CropRect(x: entry.x, y: entry.y, width: entry.width, height: entry.height)
         syncCropFieldsFromRect()
         syncSeekInputFromPlayer()
     }
@@ -413,7 +479,8 @@ final class AppState {
                     advanceAfterSave: prefs.advanceToNextCueAfterSave
                 ),
                 crops: cropStore,
-                cues: cueStore
+                cues: cueStore,
+                imageEncoder: FrameImageEncoder()
             )
             cropsRevision &+= 1
 
@@ -433,6 +500,7 @@ final class AppState {
     func onTimelineSeek(seconds: Double, precise: Bool) {
         if precise {
             player.setScrubMode(false)
+            player.pause(true)
             player.seek(seconds: seconds, precise: true)
             if let near = cueStore?.nearest(to: seconds) {
                 cueStore?.activeID = near.id
@@ -444,11 +512,6 @@ final class AppState {
             }
             player.setScrubMode(true)
             player.seek(seconds: seconds, precise: false)
-            let now = Date()
-            if now.timeIntervalSince(lastScrubPreviewAt) >= 0.05 {
-                lastScrubPreviewAt = now
-                player.refreshScrubPreview()
-            }
         }
     }
 
