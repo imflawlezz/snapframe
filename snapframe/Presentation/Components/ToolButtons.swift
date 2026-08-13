@@ -72,3 +72,23 @@ struct FrameSkipButton: View {
         ToolButton(systemName: systemName, tooltip: tooltip, shortcut: shortcut, action: action)
     }
 }
+
+struct SecondSkipButton: View {
+    enum Direction { case backward, forward }
+
+    let seconds: Int
+    let direction: Direction
+    var tooltip: String = ""
+    var shortcut: String = ""
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(direction == .backward ? "-\(seconds)s" : "+\(seconds)s")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(minWidth: 28)
+        }
+        .buttonStyle(ToolButtonStyle(width: seconds >= 5 ? 42 : 38))
+        .snapTooltip(tooltip, shortcut: shortcut)
+    }
+}
