@@ -14,14 +14,14 @@ struct SaveCropRequest {
 
 enum SaveCropError: LocalizedError {
     case waitingForDimensions
-    case sizeTooLarge(Int)
+    case tooLarge
     case outOfBounds
     case encodeFailed
 
     var errorDescription: String? {
         switch self {
         case .waitingForDimensions: return "Waiting for video dimensions…"
-        case .sizeTooLarge(let max): return "Max size is \(max)px."
+        case .tooLarge: return "Crop is larger than the video frame."
         case .outOfBounds: return "Crop rectangle is out of bounds."
         case .encodeFailed: return "Image encode failed"
         }
@@ -40,14 +40,16 @@ enum SaveCropUseCase {
     static func execute(
         request: SaveCropRequest,
         crops: CropRepository,
-        cues: CueRepository?
+        cues: CueRepository?,
+        imageEncoder: ImageEncoding
     ) throws -> SaveCropResult {
         let vw = Int(request.videoSize.width)
         let vh = Int(request.videoSize.height)
         guard vw > 0, vh > 0 else { throw SaveCropError.waitingForDimensions }
 
-        let maxS = min(vw, vh)
-        guard request.crop.size <= maxS else { throw SaveCropError.sizeTooLarge(maxS) }
+        guard request.crop.width <= vw, request.crop.height <= vh else {
+            throw SaveCropError.tooLarge
+        }
 
         let cg = request.frame
         guard let pixelRect = request.crop.scaledToImage(
@@ -62,7 +64,7 @@ enum SaveCropUseCase {
         try crops.ensureFolder()
         let filename = crops.nextFilename(format: request.format.fileExtension)
         let out = crops.cropsFolder.appendingPathComponent(filename)
-        guard let data = FrameImageEncoder.encode(
+        guard let data = imageEncoder.encode(
             cropped,
             format: request.format,
             jpegQuality: request.jpegQuality
@@ -77,7 +79,8 @@ enum SaveCropUseCase {
             timecodeSeconds: (request.pts * 1000).rounded() / 1000,
             x: request.crop.x,
             y: request.crop.y,
-            size: request.crop.size,
+            width: request.crop.width,
+            height: request.crop.height,
             videoWidth: vw,
             videoHeight: vh
         )

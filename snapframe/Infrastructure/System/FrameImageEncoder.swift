@@ -2,8 +2,8 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-enum FrameImageEncoder {
-    static func encode(_ image: CGImage, format: ExportImageFormat, jpegQuality: Double) -> Data? {
+struct FrameImageEncoder: ImageEncoding {
+    func encode(_ image: CGImage, format: ExportImageFormat, jpegQuality: Double) -> Data? {
         let rep = NSBitmapImageRep(cgImage: image)
         switch format {
         case .png:
