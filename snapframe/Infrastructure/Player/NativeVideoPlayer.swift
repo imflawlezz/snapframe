@@ -6,7 +6,7 @@ import Observation
 
 @Observable
 @MainActor
-final class NativeVideoPlayer: VideoPlaying {
+final class NativeVideoPlayer {
     private(set) var frameImage: NSImage?
     private(set) var position: Double = 0
     private(set) var duration: Double = 0
@@ -39,6 +39,7 @@ final class NativeVideoPlayer: VideoPlaying {
     private var videoCodecName: String?
     private var hasCapture = false
     private var endObserver: NSObjectProtocol?
+    private var isScrubbing = false
 
     init() {
         avPlayer.actionAtItemEnd = .pause
@@ -99,7 +100,7 @@ final class NativeVideoPlayer: VideoPlaying {
                avPlayer.currentItem?.status == .readyToPlay {
                 return true
             }
-            if let err = lastError, token == openToken { return false }
+            if lastError != nil, token == openToken { return false }
             try? await Task.sleep(nanoseconds: 30_000_000)
         }
         lastError = lastError ?? "Timed out opening video"
@@ -174,7 +175,9 @@ final class NativeVideoPlayer: VideoPlaying {
         }
     }
 
-    func setScrubMode(_ enabled: Bool) {}
+    func setScrubMode(_ enabled: Bool) {
+        isScrubbing = enabled
+    }
 
     func setCaptureSuspended(_ suspended: Bool) {}
 
@@ -184,21 +187,14 @@ final class NativeVideoPlayer: VideoPlaying {
 
     func seek(seconds: Double, precise: Bool) {
         guard avPlayer.currentItem != nil else { return }
-        var t = max(0, seconds)
-        if duration > 0 { t = min(t, max(0, duration - 0.001)) }
+        let t = clampedTime(seconds)
         position = t
 
-        let time = CMTime(seconds: t, preferredTimescale: 600)
-        if precise {
-            avPlayer.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-                guard finished else { return }
-                Task { @MainActor in
-                    self?.syncPositionFromPlayer()
-                }
-            }
-        } else {
-            avPlayer.seek(to: time)
-        }
+        let time = CMTime(seconds: t, preferredTimescale: 60_000)
+        let frameDur = 1 / max(fps, 24)
+        let slack = precise ? frameDur * 0.25 : frameDur * 2
+        let tol = CMTime(seconds: slack, preferredTimescale: 60_000)
+        avPlayer.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
     }
 
     func refreshScrubPreview() {}
@@ -210,29 +206,41 @@ final class NativeVideoPlayer: VideoPlaying {
 
     @discardableResult
     func refreshFrame(preferQuality: Bool = true) -> Bool {
-        captureFrame(at: position, updatePreview: true)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = self.captureFrame(at: self.position, updatePreview: false)
+        }
+        return true
     }
 
     func frameStep(_ n: Int) {
         guard n != 0, let item = avPlayer.currentItem else { return }
         pause(true)
-        holdsFramePreview = false
-
-        if n > 0, item.canStepForward {
-            item.step(byCount: n)
-            syncPositionFromPlayer()
-            return
-        }
-        if n < 0, item.canStepBackward {
-            item.step(byCount: n)
-            syncPositionFromPlayer()
-            return
-        }
 
         let maxFrame = max(0, totalFrames - 1)
         let targetFrame = max(0, min(maxFrame, currentFrame + n))
         let target = Timecode.seconds(forFrame: targetFrame, fps: fps)
+        position = target
+
+        if n > 0, item.canStepForward {
+            item.step(byCount: n)
+            return
+        }
+        if n < 0, item.canStepBackward {
+            item.step(byCount: n)
+            return
+        }
         seek(seconds: target, precise: true)
+    }
+
+    private func clampedTime(_ seconds: Double) -> Double {
+        var t = max(0, seconds)
+        if fps > 0 {
+            t = Timecode.snapped(seconds: t, fps: fps, duration: duration)
+        } else if duration > 0 {
+            t = min(t, max(0, duration - 0.001))
+        }
+        return t
     }
 
     func snapshotImage(at seconds: Double) async -> NSImage? {
@@ -241,14 +249,13 @@ final class NativeVideoPlayer: VideoPlaying {
         if duration > 0 { t = min(t, max(0, duration - 0.001)) }
         let time = CMTime(seconds: t, preferredTimescale: 600)
         return await withCheckedContinuation { continuation in
-            generator.generateCGImageAsynchronously(for: time) { cg, _, error in
+            generator.generateCGImageAsynchronously(for: time) { cg, _, _ in
                 if let cg {
                     let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
                     continuation.resume(returning: img)
                 } else {
                     continuation.resume(returning: nil)
                 }
-                if error != nil { /* thumbnail best-effort */ }
             }
         }
     }
@@ -330,8 +337,12 @@ final class NativeVideoPlayer: VideoPlaying {
             return false
         }
         var t = max(0, seconds)
-        if duration > 0 { t = min(t, max(0, duration - 0.001)) }
-        let time = CMTime(seconds: t, preferredTimescale: 600)
+        if fps > 0 {
+            t = Timecode.snapped(seconds: t, fps: fps, duration: duration)
+        } else if duration > 0 {
+            t = min(t, max(0, duration - 0.001))
+        }
+        let time = CMTime(seconds: t, preferredTimescale: 60_000)
 
         do {
             var actualTime = CMTime.zero
@@ -354,7 +365,7 @@ final class NativeVideoPlayer: VideoPlaying {
     private func codecName(for track: AVAssetTrack) async -> String? {
         guard let formatDescriptions = try? await track.load(.formatDescriptions),
               let desc = formatDescriptions.first else { return nil }
-        let codec = CMFormatDescriptionGetMediaSubType(desc as! CMFormatDescription)
+        let codec = CMFormatDescriptionGetMediaSubType(desc)
         return fourCCString(codec)
     }
 
@@ -377,11 +388,11 @@ final class NativeVideoPlayer: VideoPlaying {
             avPlayer.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
-        let wallInterval = 0.05 / min(max(speed, 0.5), 8)
-        let interval = CMTime(seconds: wallInterval, preferredTimescale: 600)
+        let hz = min(max(fpsValue, 24), 60)
+        let interval = CMTime(seconds: 1 / hz, preferredTimescale: 60_000)
         timeObserver = avPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            Task { @MainActor in
-                guard let self, !self.isPaused else { return }
+            MainActor.assumeIsolated {
+                guard let self, !self.isPaused, !self.isScrubbing else { return }
                 self.position = max(0, time.seconds)
             }
         }
@@ -395,9 +406,15 @@ final class NativeVideoPlayer: VideoPlaying {
 
     private func syncPositionFromPlayer() {
         let t = avPlayer.currentTime()
-        if t.isValid && !t.isIndefinite {
-            position = max(0, t.seconds)
+        guard t.isValid, !t.isIndefinite else { return }
+        var secs = max(0, t.seconds)
+        if fps > 0 {
+            secs = Timecode.snapped(seconds: secs, fps: fps, duration: duration)
         }
+        if isPaused, abs(secs - position) < (0.5 / max(fps, 1)) {
+            return
+        }
+        position = secs
     }
 
     private func observeEnd(of item: AVPlayerItem) {
@@ -409,7 +426,7 @@ final class NativeVideoPlayer: VideoPlaying {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.pause(true)
             }
         }
