@@ -7,6 +7,39 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Scissors crop (**X**): drag a region and save on release; mutually exclusive with Frame crop; **Esc** exits the mode
+- Add cue at playhead (**N**), creating/updating `Movie.cues.json` beside the source
+- In-inspector cue editing (double-click or context menu), plus Mark Done and Delete
+- Snap to cues (**S**) on the timeline, with separate time- and frame-based ranges in Preferences
+- Go to start (**Return**) when focus is outside a text field (Playback menu included)
+- Compact inspector layout for narrow widths (single-line crop rows; filename in the wide layout only)
+- `snapframeTests` target, shared test scheme/plan, and unit tests for timecode parsing, digit-field filtering, crop geometry, cue/crop stores, and `SaveCropUseCase`
+
+### Changed
+
+- Frame crop (**C**) is optional and off by default; enabling scissors turns Frame crop off, and vice versa
+- Inspector cue and crop lists follow the timeline Time / Frame display mode
+- Timeline markers distinguish cues and crops by color; selection highlight is frame-exact and clears when the playhead leaves that frame
+- Multiple cues/crops on the same frame can be pinned by clicking a specific row (for delete shortcuts)
+- Clicking a cue or crop seeks immediately; crop clicks also restore the saved rectangle
+- Timeline snap magnet applies to cues only (never crops), and only when Snap is enabled
+- Timecode fields accept compact digit entry and flexible separators (`: ; . , - /`, spaces)
+- Hardened Runtime enabled; App Sandbox remains off so sidecars can be written next to the video
+- Cue repository covers in-app add/bind; crop metadata DTO lives in Infrastructure; shared crops-folder path helper
+- Docs updated for the new crop modes, cue workflow, shortcuts, and architecture notes
+
+### Fixed
+
+- Cancel pending AVPlayer seeks before precise jumps so cue/crop navigation does not queue behind scrub seeks
+- Remove leftover no-op player APIs and unused theme/motion helpers from the AVFoundation migration
+
+### Removed
+
+- Unused `snapframe.entitlements` (explicit sandbox-off) and empty Objective-C bridging header
+- Crop-row tooltips in the inspector
+
 ## [1.2.0] — 2026-08-13
 
 ### Added
