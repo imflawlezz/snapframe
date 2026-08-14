@@ -57,6 +57,11 @@ dist/
 *.dmg
 *.zip
 
+# Test / coverage artifacts
+*.xcresult
+*.xccoverage
+coverage/
+
 # Release / DMG tooling (local only)
 Scripts/
 Packaging/
