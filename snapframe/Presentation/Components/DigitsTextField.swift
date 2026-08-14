@@ -6,10 +6,14 @@ struct DigitsTextField: NSViewRepresentable {
     var placeholder: String = ""
     var allowsNegative: Bool = false
     var allowsTimecodeChars: Bool = false
+    var allowsAllCharacters: Bool = false
     var font: NSFont = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     var textColor: NSColor = .labelColor
     var alignment: NSTextAlignment = .center
     var onCommit: () -> Void = {}
+    var onSubmit: () -> Void = {}
+    var onFocusLeft: () -> Void = {}
+    var focusGroup: String? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -28,6 +32,7 @@ struct DigitsTextField: NSViewRepresentable {
         field.delegate = context.coordinator
         field.stringValue = text
         field.onSelectAllOnFocus = true
+        field.focusGroup = focusGroup
         return field
     }
 
@@ -40,6 +45,7 @@ struct DigitsTextField: NSViewRepresentable {
         nsView.font = font
         nsView.textColor = textColor
         nsView.alignment = alignment
+        (nsView as? SelectAllTextField)?.focusGroup = focusGroup
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
@@ -55,7 +61,8 @@ struct DigitsTextField: NSViewRepresentable {
             let filtered = DigitsTextField.filter(
                 field.stringValue,
                 allowsNegative: parent.allowsNegative,
-                allowsTimecodeChars: parent.allowsTimecodeChars
+                allowsTimecodeChars: parent.allowsTimecodeChars,
+                allowsAllCharacters: parent.allowsAllCharacters
             )
             if filtered != field.stringValue {
                 let editor = field.currentEditor()
@@ -69,16 +76,19 @@ struct DigitsTextField: NSViewRepresentable {
 
         func controlTextDidEndEditing(_ obj: Notification) {
             commit()
+            parent.onFocusLeft()
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 commit()
+                parent.onSubmit()
                 control.window?.makeFirstResponder(nil)
                 return true
             }
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 control.window?.makeFirstResponder(nil)
+                parent.onSubmit()
                 return true
             }
             return false
@@ -92,23 +102,43 @@ struct DigitsTextField: NSViewRepresentable {
         }
     }
 
-    static func filter(_ raw: String, allowsNegative: Bool, allowsTimecodeChars: Bool) -> String {
+    static func filter(
+        _ raw: String,
+        allowsNegative: Bool,
+        allowsTimecodeChars: Bool,
+        allowsAllCharacters: Bool = false
+    ) -> String {
+        if allowsAllCharacters { return raw }
         var result = ""
         for (i, ch) in raw.enumerated() {
             if ch.isNumber {
                 result.append(ch)
             } else if allowsNegative, ch == "-", i == 0, !result.contains("-") {
                 result.append(ch)
-            } else if allowsTimecodeChars, ch == ":" || ch == "." {
+            } else if allowsTimecodeChars, Self.timecodeSeparatorChars.contains(ch) {
                 result.append(ch)
             }
         }
         return result
     }
+
+    private static let timecodeSeparatorChars = Set(":;.,/- ")
+
+    static func hitView(_ view: NSView?, isInGroup group: String) -> Bool {
+        var current = view
+        while let node = current {
+            if let field = node as? SelectAllTextField, field.focusGroup == group {
+                return true
+            }
+            current = node.superview
+        }
+        return false
+    }
 }
 
 private final class SelectAllTextField: NSTextField {
     var onSelectAllOnFocus = true
+    var focusGroup: String?
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
