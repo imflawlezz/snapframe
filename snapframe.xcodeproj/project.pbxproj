@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		EC149E073029FE0300488821 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EC149DE13029FE0300488821 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EC149DE83029FE0300488821;
+			remoteInfo = snapframe;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		EC149DE93029FE0300488821 /* Snapframe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Snapframe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC149E013029FE0300488821 /* snapframeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = snapframeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,10 +40,22 @@
 			path = snapframe;
 			sourceTree = "<group>";
 		};
+		EC149E023029FE0300488821 /* snapframeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = snapframeTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		EC149DE63029FE0300488821 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC149E033029FE0300488821 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +69,7 @@
 			isa = PBXGroup;
 			children = (
 				EC149DEB3029FE0300488821 /* snapframe */,
+				EC149E023029FE0300488821 /* snapframeTests */,
 				EC149DEA3029FE0300488821 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				EC149DE93029FE0300488821 /* Snapframe.app */,
+				EC149E013029FE0300488821 /* snapframeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +108,29 @@
 			productReference = EC149DE93029FE0300488821 /* Snapframe.app */;
 			productType = "com.apple.product-type.application";
 		};
+		EC149E063029FE0300488821 /* snapframeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EC149E0B3029FE0300488821 /* Build configuration list for PBXNativeTarget "snapframeTests" */;
+			buildPhases = (
+				EC149E043029FE0300488821 /* Sources */,
+				EC149E033029FE0300488821 /* Frameworks */,
+				EC149E053029FE0300488821 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EC149E083029FE0300488821 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				EC149E023029FE0300488821 /* snapframeTests */,
+			);
+			name = snapframeTests;
+			packageProductDependencies = (
+			);
+			productName = snapframeTests;
+			productReference = EC149E013029FE0300488821 /* snapframeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +143,10 @@
 				TargetAttributes = {
 					EC149DE83029FE0300488821 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					EC149E063029FE0300488821 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = EC149DE83029FE0300488821;
 					};
 				};
 			};
@@ -113,12 +165,20 @@
 			projectRoot = "";
 			targets = (
 				EC149DE83029FE0300488821 /* snapframe */,
+				EC149E063029FE0300488821 /* snapframeTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		EC149DE73029FE0300488821 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EC149E053029FE0300488821 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +195,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EC149E043029FE0300488821 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		EC149E083029FE0300488821 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EC149DE83029FE0300488821 /* snapframe */;
+			targetProxy = EC149E073029FE0300488821 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		EC149DF43029FE0600488821 /* Debug */ = {
@@ -263,15 +338,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Snapframe;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = snapframe/snapframe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = AW9Z462NX3;
 				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = snapframe/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Snapframe;
@@ -284,6 +357,7 @@
 				);
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.imflawlezz.snapframe;
+				PRODUCT_MODULE_NAME = Snapframe;
 				PRODUCT_NAME = Snapframe;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -300,15 +374,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = Snapframe;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = snapframe/snapframe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = AW9Z462NX3;
 				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = snapframe/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Snapframe;
@@ -321,6 +393,7 @@
 				);
 				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.imflawlezz.snapframe;
+				PRODUCT_MODULE_NAME = Snapframe;
 				PRODUCT_NAME = Snapframe;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -329,6 +402,48 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		EC149E093029FE0300488821 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AW9Z462NX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.imflawlezz.snapframeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Snapframe.app/Contents/MacOS/Snapframe";
+			};
+			name = Debug;
+		};
+		EC149E0A3029FE0300488821 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AW9Z462NX3;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.imflawlezz.snapframeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Snapframe.app/Contents/MacOS/Snapframe";
 			};
 			name = Release;
 		};
@@ -349,6 +464,15 @@
 			buildConfigurations = (
 				EC149DF73029FE0600488821 /* Debug */,
 				EC149DF83029FE0600488821 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EC149E0B3029FE0300488821 /* Build configuration list for PBXNativeTarget "snapframeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EC149E093029FE0300488821 /* Debug */,
+				EC149E0A3029FE0300488821 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -10,14 +10,14 @@
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "EC149DE83029FE0300488821"
-               BuildableName = "Snapframe.app"
-               BlueprintName = "snapframe"
+               BlueprintIdentifier = "EC149E063029FE0300488821"
+               BuildableName = "snapframeTests.xctest"
+               BlueprintName = "snapframeTests"
                ReferencedContainer = "container:snapframe.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -59,16 +59,15 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "EC149DE83029FE0300488821"
-            BuildableName = "Snapframe.app"
-            BlueprintName = "snapframe"
+            BlueprintIdentifier = "EC149E063029FE0300488821"
+            BuildableName = "snapframeTests.xctest"
+            BlueprintName = "snapframeTests"
             ReferencedContainer = "container:snapframe.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -76,16 +75,15 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "EC149DE83029FE0300488821"
-            BuildableName = "Snapframe.app"
-            BlueprintName = "snapframe"
+            BlueprintIdentifier = "EC149E063029FE0300488821"
+            BuildableName = "snapframeTests.xctest"
+            BlueprintName = "snapframeTests"
             ReferencedContainer = "container:snapframe.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
