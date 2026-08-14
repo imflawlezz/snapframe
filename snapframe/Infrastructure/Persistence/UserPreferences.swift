@@ -42,6 +42,18 @@ final class UserPreferences {
         didSet { UserDefaults.standard.set(pauseOnFocusLoss, forKey: Keys.pauseOnFocusLoss) }
     }
 
+    var snapToCues: Bool {
+        didSet { UserDefaults.standard.set(snapToCues, forKey: Keys.snapToCues) }
+    }
+
+    var cueSnapToleranceSeconds: Double {
+        didSet { UserDefaults.standard.set(cueSnapToleranceSeconds, forKey: Keys.cueSnapSeconds) }
+    }
+
+    var cueSnapToleranceFrames: Int {
+        didSet { UserDefaults.standard.set(cueSnapToleranceFrames, forKey: Keys.cueSnapFrames) }
+    }
+
     private enum Keys {
         static let exportFormat = "pref.exportFormat"
         static let jpegQuality = "pref.jpegQuality"
@@ -52,12 +64,13 @@ final class UserPreferences {
         static let cuesPaneFraction = "pref.cuesPaneFraction"
         static let volume = "pref.volume"
         static let pauseOnFocusLoss = "pref.pauseOnFocusLoss"
+        static let snapToCues = "pref.snapToCuesOnSeek"
+        static let cueSnapSeconds = "pref.cueSnapToleranceSeconds"
+        static let cueSnapFrames = "pref.cueSnapToleranceFrames"
 
         static let obsolete = [
             "pref.playbackPreviewRate",
             "pref.playbackPreviewResolution",
-            "pref.snapToCuesOnSeek",
-            "pref.cueSnapToleranceFrames",
         ]
     }
 
@@ -74,6 +87,11 @@ final class UserPreferences {
         cuesPaneFraction = d.object(forKey: Keys.cuesPaneFraction) as? Double ?? 0.42
         volume = d.object(forKey: Keys.volume) as? Double ?? 100
         pauseOnFocusLoss = d.object(forKey: Keys.pauseOnFocusLoss) as? Bool ?? true
+        snapToCues = d.object(forKey: Keys.snapToCues) as? Bool ?? false
+        let savedSnapSeconds = d.object(forKey: Keys.cueSnapSeconds) as? Double ?? 0.35
+        cueSnapToleranceSeconds = min(2, max(0.05, savedSnapSeconds))
+        let savedSnapFrames = d.object(forKey: Keys.cueSnapFrames) as? Int ?? 5
+        cueSnapToleranceFrames = min(30, max(1, savedSnapFrames))
     }
 
     func resetToDefaults() {
@@ -86,6 +104,9 @@ final class UserPreferences {
         cuesPaneFraction = 0.42
         volume = 100
         pauseOnFocusLoss = true
+        snapToCues = false
+        cueSnapToleranceSeconds = 0.35
+        cueSnapToleranceFrames = 5
         Self.removeObsoleteKeys()
     }
 
