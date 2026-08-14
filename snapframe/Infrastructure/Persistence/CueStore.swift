@@ -24,7 +24,6 @@ final class CueStore: CueRepository {
     static let formatID = "snapframe-cues"
 
     private(set) var cues: [Cue] = []
-    var activeID: String?
 
     let sourceFilename: String
     private(set) var fileURL: URL?
@@ -33,6 +32,25 @@ final class CueStore: CueRepository {
 
     init(sourceFilename: String) {
         self.sourceFilename = sourceFilename
+    }
+
+    func bindFileURL(_ url: URL) {
+        if fileURL == nil { fileURL = url }
+    }
+
+    @discardableResult
+    func add(at seconds: Double, label: String = "") throws -> Cue {
+        let t = (seconds * 1000).rounded() / 1000
+        let cue = Cue(
+            id: "cue_\(UUID().uuidString.prefix(8))",
+            t: t,
+            label: label,
+            done: false
+        )
+        cues.append(cue)
+        cues.sort { $0.t < $1.t }
+        try save()
+        return cue
     }
 
     func load(from url: URL) throws {
@@ -74,7 +92,6 @@ final class CueStore: CueRepository {
         parsed.sort { $0.t < $1.t }
         cues = parsed
         fileURL = url
-        activeID = nil
     }
 
     func save() throws {
@@ -99,14 +116,30 @@ final class CueStore: CueRepository {
     func cue(id: String) -> Cue? { cues.first { $0.id == id } }
 
     func markDone(_ id: String) throws {
+        try setDone(id, done: true)
+    }
+
+    func setDone(_ id: String, done: Bool) throws {
         guard let i = cues.firstIndex(where: { $0.id == id }) else { return }
-        cues[i].done = true
+        cues[i].done = done
+        try save()
+    }
+
+    func updateLabel(_ id: String, label: String) throws {
+        guard let i = cues.firstIndex(where: { $0.id == id }) else { return }
+        cues[i].label = label
+        try save()
+    }
+
+    func updateTime(_ id: String, seconds: Double) throws {
+        guard let i = cues.firstIndex(where: { $0.id == id }) else { return }
+        cues[i].t = (max(0, seconds) * 1000).rounded() / 1000
+        cues.sort { $0.t < $1.t }
         try save()
     }
 
     func remove(_ id: String) throws {
         cues.removeAll { $0.id == id }
-        if activeID == id { activeID = nil }
         try save()
     }
 
@@ -133,17 +166,5 @@ final class CueStore: CueRepository {
             if seen && !c.done { return c }
         }
         return pend[0]
-    }
-
-    func prevPending(before id: String?) -> Cue? {
-        let pend = pending
-        guard !pend.isEmpty else { return nil }
-        guard let id else { return pend.last }
-        var prev: Cue?
-        for c in cues {
-            if c.id == id { return prev ?? pend.last }
-            if !c.done { prev = c }
-        }
-        return pend.last
     }
 }

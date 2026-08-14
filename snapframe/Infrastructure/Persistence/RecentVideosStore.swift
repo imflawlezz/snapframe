@@ -22,8 +22,7 @@ final class RecentVideosStore {
     }
 
     static func cropsFolder(for videoURL: URL) -> URL {
-        let stem = videoURL.deletingPathExtension().lastPathComponent
-        return videoURL.deletingLastPathComponent().appendingPathComponent("\(stem)_crops")
+        CropStore.cropsFolder(for: videoURL)
     }
 
     func record(videoURL: URL, preview: NSImage?, mediaInfo: RecentVideoMediaInfo? = nil) {

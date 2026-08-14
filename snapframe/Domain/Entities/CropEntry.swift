@@ -79,15 +79,3 @@ struct CropEntry: Codable, Identifiable, Equatable {
         try vs.encode(videoHeight, forKey: .height)
     }
 }
-
-struct CropMetadataFile: Codable {
-    var source: String
-    var sourcePath: String
-    var crops: [CropEntry]
-
-    enum CodingKeys: String, CodingKey {
-        case source
-        case sourcePath = "source_path"
-        case crops
-    }
-}

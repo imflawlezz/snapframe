@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+struct CropMetadataFile: Codable {
+    var source: String
+    var sourcePath: String
+    var crops: [CropEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case source
+        case sourcePath = "source_path"
+        case crops
+    }
+}
+
 @Observable
 @MainActor
 final class CropStore: CropRepository {
@@ -8,16 +20,18 @@ final class CropStore: CropRepository {
 
     let videoURL: URL
 
-    var cropsFolder: URL {
-        let stem = videoURL.deletingPathExtension().lastPathComponent
-        return videoURL.deletingLastPathComponent().appendingPathComponent("\(stem)_crops")
-    }
+    var cropsFolder: URL { Self.cropsFolder(for: videoURL) }
 
     var metaURL: URL { cropsFolder.appendingPathComponent("metadata.json") }
 
     init(videoURL: URL) {
         self.videoURL = videoURL
         load()
+    }
+
+    static func cropsFolder(for videoURL: URL) -> URL {
+        let stem = videoURL.deletingPathExtension().lastPathComponent
+        return videoURL.deletingLastPathComponent().appendingPathComponent("\(stem)_crops")
     }
 
     func load() {

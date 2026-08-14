@@ -10,6 +10,7 @@ struct SaveCropRequest {
     var jpegQuality: Double
     var markCueDone: Bool
     var advanceAfterSave: Bool
+    var cueMatchWindow: Double
 }
 
 enum SaveCropError: LocalizedError {
@@ -89,8 +90,7 @@ enum SaveCropUseCase {
         var marked: Cue?
         var nextID: String?
         if request.markCueDone, let cues {
-            var target = cues.activeID.flatMap { cues.cue(id: $0) }
-            if target == nil { target = cues.nearest(to: request.pts, maxDelta: 0.35) }
+            let target = cues.nearest(to: request.pts, maxDelta: request.cueMatchWindow)
             if let t = target, !t.done {
                 try cues.markDone(t.id)
                 marked = t

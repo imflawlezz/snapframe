@@ -18,18 +18,6 @@ struct CropRect: Equatable {
 
     var centerX: Int { x + width / 2 }
     var centerY: Int { y + height / 2 }
-    var isSquare: Bool { width == height }
-
-    init(x: Int, y: Int, width: Int, height: Int) {
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-    }
-
-    init(x: Int, y: Int, size: Int) {
-        self.init(x: x, y: y, width: size, height: size)
-    }
 
     func centerOffset(in video: CGSize) -> (dx: Int, dy: Int) {
         guard video.width > 0, video.height > 0 else { return (0, 0) }
