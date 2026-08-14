@@ -17,7 +17,8 @@ final class AppState {
     var lastDirectory: URL? = FileManager.default.homeDirectoryForCurrentUser
     var errorMessage: String?
     var inspectorVisible = true
-    var cropOverlayVisible = true
+    var cropOverlayVisible = false
+    var cropScissorsMode = false
     var cropSquareLocked = false
     var cropRatioLocked = false
     var cropLockedRatioW = 16
@@ -41,7 +42,8 @@ final class AppState {
 
     var isOpeningVideo: Bool { isLoadingVideo && videoURL == nil }
     var cropsRevision: Int = 0
-    var activeCropIndex: Int?
+    private var pinnedCueID: String?
+    private var pinnedCropIndex: Int?
 
     private var loadTask: Task<Void, Never>?
     private var didCenterCrop = false
@@ -57,10 +59,12 @@ final class AppState {
 
     var timelineMarkers: [TimelineMarker] {
         var markers: [TimelineMarker] = []
+        let highlightedCue = highlightedCueID
+        let highlightedCrop = highlightedCropIndex
         if let cues = cueStore {
             for c in cues.cues {
                 let kind: TimelineMarker.Kind
-                if c.id == cues.activeID { kind = .cueActive }
+                if c.id == highlightedCue { kind = .cueActive }
                 else if c.done { kind = .cueDone }
                 else { kind = .cuePending }
                 markers.append(TimelineMarker(id: "cue-\(c.id)", t: c.t, kind: kind, cueID: c.id))
@@ -71,12 +75,30 @@ final class AppState {
                 markers.append(TimelineMarker(
                     id: "crop-\(i)-\(e.file)",
                     t: e.timecodeSeconds,
-                    kind: .crop,
-                    cueID: nil
+                    kind: i == highlightedCrop ? .cropActive : .crop,
+                    cropIndex: i
                 ))
             }
         }
         return markers
+    }
+
+    var highlightedCueID: String? {
+        guard let cues = cueStore?.cues else { return nil }
+        if let id = pinnedCueID, let cue = cues.first(where: { $0.id == id }), isAtPlayhead(cue.t) {
+            return id
+        }
+        return cues.first { isAtPlayhead($0.t) }?.id
+    }
+
+    var highlightedCropIndex: Int? {
+        guard let entries = cropStore?.entries else { return nil }
+        if let pinned = pinnedCropIndex,
+           entries.indices.contains(pinned),
+           isAtPlayhead(entries[pinned].timecodeSeconds) {
+            return pinned
+        }
+        return entries.indices.last { isAtPlayhead(entries[$0].timecodeSeconds) }
     }
 
     var pendingCueCount: Int { cueStore?.pending.count ?? 0 }
@@ -116,14 +138,12 @@ final class AppState {
     }
 
     func setCropInteracting(_ active: Bool) {
-        player.setPlaybackCaptureSuppressed(active)
         if !active { syncCropFieldsFromRect() }
     }
 
     func refreshPreview() {
         guard videoURL != nil, !isLoadingVideo else { return }
-        player.setCaptureSuspended(false)
-        _ = player.refreshFrame(preferQuality: true)
+        _ = player.refreshFrame()
         syncSeekInputFromPlayer()
         status = "Preview refreshed"
     }
@@ -144,8 +164,10 @@ final class AppState {
         cropStore = nil
         cueStore = nil
         crop = .default
+        cropScissorsMode = false
         seekInput = ""
-        activeCropIndex = nil
+        pinnedCueID = nil
+        pinnedCropIndex = nil
         didCenterCrop = false
         status = "Drop a video or press ⌘O"
         errorMessage = nil
@@ -168,7 +190,8 @@ final class AppState {
             didCenterCrop = false
             crop = .default
             seekInput = ""
-            activeCropIndex = nil
+            pinnedCueID = nil
+            pinnedCropIndex = nil
             status = url.lastPathComponent
         }
 
@@ -197,7 +220,8 @@ final class AppState {
                 didCenterCrop = false
                 crop = .default
                 seekInput = ""
-                activeCropIndex = nil
+                pinnedCueID = nil
+                pinnedCropIndex = nil
             }
 
             loadProgressMessage = "Loading cues…"
@@ -208,7 +232,7 @@ final class AppState {
             }
 
             ensureCenteredCrop()
-            _ = player.refreshFrame(preferQuality: true)
+            _ = player.refreshFrame()
 
             if openingFresh {
                 isLoadingVideo = false
@@ -288,6 +312,24 @@ final class AppState {
         syncCropFieldsFromRect()
     }
 
+    func toggleCropOverlay() {
+        if cropOverlayVisible {
+            cropOverlayVisible = false
+        } else {
+            cropOverlayVisible = true
+            cropScissorsMode = false
+        }
+    }
+
+    func toggleCropScissors() {
+        if cropScissorsMode {
+            cropScissorsMode = false
+        } else {
+            cropScissorsMode = true
+            cropOverlayVisible = false
+        }
+    }
+
     func toggleCropRatioLock() {
         cropRatioLocked.toggle()
         if cropRatioLocked {
@@ -311,6 +353,32 @@ final class AppState {
             next.setWidth(side, in: player.videoSize, lock: .square)
             crop = next
             syncCropFieldsFromRect()
+        }
+    }
+
+    func displayTime(_ seconds: Double) -> String {
+        Timecode.display(seconds: seconds, mode: jumpMode, fps: player.fps)
+    }
+
+    func addCueAtPlayhead() {
+        guard let videoURL, let cueStore else {
+            errorMessage = "Open a video first."
+            return
+        }
+        cueStore.bindFileURL(FileAccess.sidecarCuesURL(for: videoURL))
+        let t = player.position
+        let frameWindow = player.fps > 0 ? (1 / player.fps) : 0.04
+        if let near = cueStore.nearest(to: t, maxDelta: frameWindow) {
+            pinnedCueID = near.id
+            status = "Cue already here"
+            return
+        }
+        do {
+            let cue = try cueStore.add(at: t)
+            pinnedCueID = cue.id
+            status = "Cue \(displayTime(cue.t))"
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -346,7 +414,7 @@ final class AppState {
         switch jumpMode {
         case .time:
             guard let seconds = Timecode.parse(seekInput) else {
-                errorMessage = "Use HH:MM:SS.mmm or seconds."
+                errorMessage = "Use HH:MM:SS.mmm, MM:SS, seconds, or compact digits (1234 → 12:34)."
                 return
             }
             seekTo(seconds: seconds, precise: true)
@@ -370,51 +438,111 @@ final class AppState {
         seekTo(seconds: target, precise: true)
     }
 
+    func goToStart() {
+        guard videoURL != nil, !isLoadingVideo else { return }
+        seekTo(seconds: 0, precise: true)
+    }
+
+    func toggleSnapToCues() {
+        UserPreferences.shared.snapToCues.toggle()
+    }
+
+    func snappedSeekTime(_ seconds: Double) -> Double {
+        guard UserPreferences.shared.snapToCues else { return seconds }
+        let tol = cueSnapWindow
+        guard let near = cueStore?.nearest(to: seconds, maxDelta: tol) else { return seconds }
+        return near.t
+    }
+
     func gotoCue(_ id: String) {
         guard let cue = cueStore?.cue(id: id) else { return }
-        cueStore?.activeID = id
+        pinnedCueID = id
         player.pause(true)
         player.setScrubMode(false)
         player.seek(seconds: cue.t, precise: true)
         syncSeekInputFromPlayer()
-        status = cue.label.isEmpty ? cue.timecode : "\(cue.timecode) — \(cue.label)"
+        status = cue.label.isEmpty ? displayTime(cue.t) : "\(displayTime(cue.t)) — \(cue.label)"
     }
 
     func nextCue() {
         guard let store = cueStore else { return }
-        guard let cue = store.nextPending(after: store.activeID) else {
+        let frame = Timecode.frameIndex(at: player.position, fps: player.fps)
+        let next = store.pending.first { Timecode.frameIndex(at: $0.t, fps: player.fps) > frame }
+            ?? store.pending.first
+        guard let next else {
             status = "No pending cues"
             return
         }
-        gotoCue(cue.id)
+        gotoCue(next.id)
     }
 
     func prevCue() {
         guard let store = cueStore else { return }
-        guard let cue = store.prevPending(before: store.activeID) else {
+        let frame = Timecode.frameIndex(at: player.position, fps: player.fps)
+        let prev = store.pending.last { Timecode.frameIndex(at: $0.t, fps: player.fps) < frame }
+            ?? store.pending.last
+        guard let prev else {
             status = "No pending cues"
             return
         }
-        gotoCue(cue.id)
+        gotoCue(prev.id)
     }
 
     func deleteActiveCue() {
+        guard let id = highlightedCueID else { return }
+        deleteCue(id)
+    }
+
+    func deleteCue(_ id: String) {
         guard let store = cueStore else { return }
-        let id = store.activeID ?? store.cues.first?.id
-        guard let id else { return }
-        var next: Cue?
-        var seen = false
-        for c in store.cues {
-            if c.id == id { seen = true; continue }
-            if seen && !c.done { next = c; break }
-        }
-        if next == nil {
-            next = store.cues.first { $0.id != id && !$0.done }
-        }
         do {
             try store.remove(id)
-            if let next { gotoCue(next.id) }
-            else { status = "Cue deleted" }
+            if pinnedCueID == id { pinnedCueID = nil }
+            status = "Cue deleted"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func toggleCueDone(_ id: String) {
+        guard let cue = cueStore?.cue(id: id) else { return }
+        do {
+            try cueStore?.setDone(id, done: !cue.done)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func updateCueLabel(_ id: String, label: String) {
+        do {
+            try cueStore?.updateLabel(id, label: label)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func updateCueTime(_ id: String, text: String) {
+        let seconds: Double?
+        switch jumpMode {
+        case .time:
+            seconds = Timecode.parse(text)
+        case .frame:
+            guard let frame = Timecode.parseFrame(text) else {
+                seconds = nil
+                break
+            }
+            seconds = Timecode.seconds(forFrame: frame, fps: player.fps)
+        }
+        guard let seconds else {
+            errorMessage = jumpMode == .time
+                ? "Use HH:MM:SS.mmm, MM:SS, seconds, or compact digits (1234 → 12:34)."
+                : "Enter a frame number."
+            return
+        }
+        let clamped = min(max(0, seconds), max(0, player.duration - 0.001))
+        do {
+            try cueStore?.updateTime(id, seconds: clamped)
+            gotoCue(id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -423,8 +551,9 @@ final class AppState {
     func seekCrop(at index: Int) {
         guard let entries = cropStore?.entries, entries.indices.contains(index) else { return }
         let entry = entries[index]
-        activeCropIndex = index
+        pinnedCropIndex = index
         player.pause(true)
+        player.setScrubMode(false)
         player.seek(seconds: entry.timecodeSeconds, precise: true)
         crop = CropRect(x: entry.x, y: entry.y, width: entry.width, height: entry.height)
         syncCropFieldsFromRect()
@@ -435,10 +564,12 @@ final class AppState {
         do {
             try cropStore?.remove(at: index)
             cropsRevision &+= 1
-            if activeCropIndex == index {
-                activeCropIndex = nil
-            } else if let active = activeCropIndex, active > index {
-                activeCropIndex = active - 1
+            if let pinned = pinnedCropIndex {
+                if index == pinned {
+                    pinnedCropIndex = nextPinnedCropIndex(afterDeleting: index)
+                } else if index < pinned {
+                    pinnedCropIndex = pinned - 1
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -446,13 +577,25 @@ final class AppState {
     }
 
     func deleteActiveCrop() {
-        guard let index = activeCropIndex else { return }
+        guard let index = highlightedCropIndex else { return }
         deleteCrop(at: index)
     }
 
+    private func nextPinnedCropIndex(afterDeleting index: Int) -> Int? {
+        guard let entries = cropStore?.entries, !entries.isEmpty else { return nil }
+        if entries.indices.contains(index), isAtPlayhead(entries[index].timecodeSeconds) {
+            return index
+        }
+        let previous = index - 1
+        if entries.indices.contains(previous), isAtPlayhead(entries[previous].timecodeSeconds) {
+            return previous
+        }
+        return entries.indices.last { isAtPlayhead(entries[$0].timecodeSeconds) }
+    }
+
     func saveCrop() {
-        guard cropOverlayVisible else {
-            errorMessage = "Enable crop overlay to save."
+        guard cropOverlayVisible || cropScissorsMode else {
+            errorMessage = "Enable Frame Crop or Scissors to save."
             return
         }
         guard let cropStore else { return }
@@ -476,21 +619,23 @@ final class AppState {
                     format: prefs.exportFormat,
                     jpegQuality: prefs.jpegQuality,
                     markCueDone: prefs.markCueDoneOnSave,
-                    advanceAfterSave: prefs.advanceToNextCueAfterSave
+                    advanceAfterSave: prefs.advanceToNextCueAfterSave,
+                    cueMatchWindow: frameMatchWindow
                 ),
                 crops: cropStore,
                 cues: cueStore,
                 imageEncoder: FrameImageEncoder()
             )
             cropsRevision &+= 1
+            pinnedCropIndex = cropStore.entries.indices.last
 
             if let marked = result.markedCue {
-                status = "Saved \(result.filename) · cue \(marked.timecode) done"
+                status = "Saved \(result.filename) · cue \(displayTime(marked.t)) done"
                 if let nextID = result.nextCueID {
                     DispatchQueue.main.async { [weak self] in self?.gotoCue(nextID) }
                 }
             } else {
-                status = "Saved \(result.filename) @ \(result.entry.timecode)"
+                status = "Saved \(result.filename) @ \(displayTime(result.entry.timecodeSeconds))"
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -498,20 +643,18 @@ final class AppState {
     }
 
     func onTimelineSeek(seconds: Double, precise: Bool) {
+        let t = snappedSeekTime(seconds)
         if precise {
             player.setScrubMode(false)
             player.pause(true)
-            player.seek(seconds: seconds, precise: true)
-            if let near = cueStore?.nearest(to: seconds) {
-                cueStore?.activeID = near.id
-            }
+            player.seek(seconds: t, precise: true)
             syncSeekInputFromPlayer()
         } else {
             if !player.isPaused {
                 player.pause(true)
             }
             player.setScrubMode(true)
-            player.seek(seconds: seconds, precise: false)
+            player.seek(seconds: t, precise: false)
         }
     }
 
@@ -519,10 +662,26 @@ final class AppState {
         player.pause(true)
         player.setScrubMode(false)
         player.seek(seconds: seconds, precise: precise)
-        if let near = cueStore?.nearest(to: player.position) {
-            cueStore?.activeID = near.id
-        }
         syncSeekInputFromPlayer()
+    }
+
+    private func isAtPlayhead(_ seconds: Double) -> Bool {
+        Timecode.frameIndex(at: seconds, fps: player.fps)
+            == Timecode.frameIndex(at: player.position, fps: player.fps)
+    }
+
+    private var frameMatchWindow: Double {
+        0.51 / max(player.fps, 1)
+    }
+
+    private var cueSnapWindow: Double {
+        let prefs = UserPreferences.shared
+        switch jumpMode {
+        case .time:
+            return prefs.cueSnapToleranceSeconds
+        case .frame:
+            return Double(prefs.cueSnapToleranceFrames) / max(player.fps, 1)
+        }
     }
 
     private func captureMidpointThumbnail(for url: URL) async {

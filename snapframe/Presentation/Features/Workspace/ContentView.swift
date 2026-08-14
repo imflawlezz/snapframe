@@ -41,7 +41,6 @@ struct ContentView: View {
             ))
         )
         .preferredColorScheme(theme.swiftUIScheme)
-        .environment(\.appTheme, theme)
         .sheet(isPresented: $showingAbout) {
             PreferencesSheet(onOpen: {
                 state.player.pause(true)
@@ -336,8 +335,15 @@ struct ContentView: View {
                     ToolButton(
                         systemName: "crop",
                         kind: state.cropOverlayVisible ? .accent : .normal,
-                        tooltip: "Toggle crop overlay", shortcut: "C"
-                    ) { state.cropOverlayVisible.toggle() }
+                        tooltip: "Frame crop", shortcut: "C"
+                    ) { state.toggleCropOverlay() }
+                    ToolButton(
+                        systemName: "scissors",
+                        kind: state.cropScissorsMode ? .accent : .normal,
+                        tooltip: "Scissors crop", shortcut: "X"
+                    ) { state.toggleCropScissors() }
+                    .disabled(state.player.videoSize == .zero || state.isLoadingVideo)
+                    .opacity(state.player.videoSize == .zero || state.isLoadingVideo ? 0.4 : 1)
                     ToolButton(
                         systemName: "sidebar.right",
                         kind: state.inspectorVisible ? .accent : .normal,
@@ -393,9 +399,10 @@ struct ContentView: View {
                 seekInput: $state.seekInput,
                 jumpMode: $state.jumpMode,
                 followPlayhead: $state.followPlayhead,
+                snapToCues: $prefs.snapToCues,
                 onSeek: { t, precise in state.onTimelineSeek(seconds: t, precise: precise) },
-                onMarker: { id in state.gotoCue(id) },
-                onJumpSubmit: { state.performSeek() }
+                onJumpSubmit: { state.performSeek() },
+                snapSeek: { state.snappedSeekTime($0) }
             )
             .background(SnapTheme.panel.opacity(0.5))
         }

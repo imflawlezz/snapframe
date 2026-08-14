@@ -12,14 +12,19 @@ private enum KeyCode {
     static let two: UInt16 = 19
     static let three: UInt16 = 20
 
+    static let x: UInt16 = 7
     static let c: UInt16 = 8
     static let g: UInt16 = 5
     static let l: UInt16 = 37
     static let m: UInt16 = 46
+    static let n: UInt16 = 45
     static let p: UInt16 = 35
     static let r: UInt16 = 15
+    static let s: UInt16 = 1
     static let leftBracket: UInt16 = 33
     static let rightBracket: UInt16 = 30
+    static let returnKey: UInt16 = 36
+    static let keypadEnter: UInt16 = 76
 }
 
 struct HotkeyCatcher: NSViewRepresentable {
@@ -91,10 +96,11 @@ struct HotkeyCatcher: NSViewRepresentable {
         }
 
         private func resignEditingIfClickOutside(_ event: NSEvent) {
-            guard let window = event.window ?? window, isEditingText(in: window) else { return }
+            guard let window = event.window ?? window ?? NSApp.keyWindow, isEditingText(in: window) else { return }
             let hit = window.contentView?.hitTest(event.locationInWindow)
             if let hit, Self.isTextInputHierarchy(hit) { return }
-            window.makeFirstResponder(self)
+            window.endEditing(for: nil)
+            _ = window.makeFirstResponder(self)
         }
 
         override func keyDown(with event: NSEvent) {
@@ -120,8 +126,14 @@ struct HotkeyCatcher: NSViewRepresentable {
             let option = mods.contains(.option)
 
             switch event.keyCode {
-            case KeyCode.escape where state.videoURL != nil:
-                state.closeVideo()
+            case KeyCode.escape:
+                if state.cropScissorsMode {
+                    state.cropScissorsMode = false
+                } else if state.videoURL != nil {
+                    state.closeVideo()
+                } else {
+                    return false
+                }
             case KeyCode.space:
                 state.player.togglePause()
             case KeyCode.left:
@@ -137,7 +149,7 @@ struct HotkeyCatcher: NSViewRepresentable {
                     state.frameStep(shift ? 10 : 1)
                 }
             case KeyCode.delete:
-                if shift, state.activeCropIndex != nil {
+                if shift, state.highlightedCropIndex != nil {
                     state.deleteActiveCrop()
                 } else if !shift {
                     state.deleteActiveCue()
@@ -146,16 +158,24 @@ struct HotkeyCatcher: NSViewRepresentable {
                 }
             case KeyCode.m:
                 state.player.toggleMute()
+            case KeyCode.n:
+                state.addCueAtPlayhead()
             case KeyCode.c:
-                state.cropOverlayVisible.toggle()
-            case KeyCode.l where state.cropOverlayVisible:
+                state.toggleCropOverlay()
+            case KeyCode.x:
+                state.toggleCropScissors()
+            case KeyCode.l where state.cropOverlayVisible || state.cropScissorsMode:
                 state.toggleCropRatioLock()
-            case KeyCode.r where state.cropOverlayVisible:
+            case KeyCode.r where state.cropOverlayVisible || state.cropScissorsMode:
                 state.toggleCropSquareLock()
             case KeyCode.p:
                 state.followPlayhead.toggle()
+            case KeyCode.s:
+                state.toggleSnapToCues()
             case KeyCode.g:
                 state.performSeek()
+            case KeyCode.returnKey, KeyCode.keypadEnter:
+                state.goToStart()
             case KeyCode.one:
                 state.player.setSpeed(0.5)
             case KeyCode.two:

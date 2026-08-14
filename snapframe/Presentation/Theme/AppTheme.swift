@@ -38,6 +38,10 @@ final class AppTheme {
     var accent: Color        { Color(red: 0.34, green: 0.61, blue: 0.58) }
     var accentSoft: Color    { accent.opacity(0.20) }
     var warn: Color          { Color(red: 0.82, green: 0.40, blue: 0.12) }
+    var warnSoft: Color      { warn.opacity(0.20) }
+    var cue: Color           { accent }
+    var cuePending: Color    { accent.opacity(0.55) }
+    var crop: Color          { warn }
     var good: Color          { Color(red: 0.18, green: 0.55, blue: 0.34) }
     var videoWell: Color     { Color(red: 0.06, green: 0.07, blue: 0.08) }
     var stroke: Color        { isDark ? Color(white: 1.0).opacity(0.10)            : Color(red: 0.08, green: 0.10, blue: 0.12).opacity(0.18) }
@@ -110,16 +114,5 @@ final class AppTheme {
         case .system:
             NSApp.appearance = nil
         }
-    }
-}
-
-private struct AppThemeKey: EnvironmentKey {
-    static let defaultValue: AppTheme = .shared
-}
-
-extension EnvironmentValues {
-    var appTheme: AppTheme {
-        get { self[AppThemeKey.self] }
-        set { self[AppThemeKey.self] = newValue }
     }
 }

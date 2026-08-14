@@ -60,10 +60,39 @@ struct PreferencesSheet: View {
                         detail: "Load video.cues.json next to the file on open",
                         isOn: $prefs.autoImportSidecarCues
                     )
+                    preferenceRow(label: "Snap range (time)") {
+                        HStack(spacing: 10) {
+                            Slider(value: $prefs.cueSnapToleranceSeconds, in: 0.05...2.0)
+                                .tint(SnapTheme.accent)
+                            Text(String(format: "%.2f s", prefs.cueSnapToleranceSeconds))
+                                .font(SnapTheme.mono)
+                                .foregroundStyle(SnapTheme.inkSecondary)
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    preferenceRow(label: "Snap range (frame)") {
+                        HStack(spacing: 10) {
+                            Slider(
+                                value: Binding(
+                                    get: { Double(prefs.cueSnapToleranceFrames) },
+                                    set: { prefs.cueSnapToleranceFrames = Int($0.rounded()) }
+                                ),
+                                in: 1...30,
+                                step: 1
+                            )
+                            .tint(SnapTheme.accent)
+                            Text("\(prefs.cueSnapToleranceFrames) f")
+                                .font(SnapTheme.mono)
+                                .foregroundStyle(SnapTheme.inkSecondary)
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding(.vertical, 8)
             }
-            .frame(maxHeight: 340)
+            .frame(maxHeight: 420)
             .background(SnapTheme.mist)
             .tint(SnapTheme.accent)
             Divider()

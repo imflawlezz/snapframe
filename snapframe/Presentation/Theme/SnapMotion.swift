@@ -6,6 +6,4 @@ enum SnapMotion {
     static let spring = Animation.spring(response: 0.32, dampingFraction: 0.86)
     static let inspector = Animation.spring(response: 0.38, dampingFraction: 0.9)
     static let scroll = Animation.spring(response: 0.26, dampingFraction: 0.9)
-    static let wheel = Animation.easeOut(duration: 0.08)
-    static let follow = Animation.easeOut(duration: 0.2)
 }

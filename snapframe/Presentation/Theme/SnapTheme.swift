@@ -10,6 +10,10 @@ enum SnapTheme {
     static var accent: Color       { AppTheme.shared.accent }
     static var accentSoft: Color   { AppTheme.shared.accentSoft }
     static var warn: Color         { AppTheme.shared.warn }
+    static var warnSoft: Color     { AppTheme.shared.warnSoft }
+    static var cue: Color          { AppTheme.shared.cue }
+    static var cuePending: Color   { AppTheme.shared.cuePending }
+    static var crop: Color         { AppTheme.shared.crop }
     static var good: Color         { AppTheme.shared.good }
     static var videoWell: Color    { AppTheme.shared.videoWell }
     static var stroke: Color       { AppTheme.shared.stroke }
@@ -21,10 +25,6 @@ enum SnapTheme {
     static var timelineGridMinor: Color { AppTheme.shared.timelineGridMinor }
     static var timelineGridMajor: Color { AppTheme.shared.timelineGridMajor }
     static var timelinePlayheadStem: Color { AppTheme.shared.timelinePlayheadStem }
-
-    static let closeRed   = Color(red: 1.0, green: 0.37, blue: 0.34)
-    static let minYellow  = Color(red: 1.0, green: 0.74, blue: 0.18)
-    static let zoomGreen  = Color(red: 0.16, green: 0.78, blue: 0.25)
 
     static let displayFont = Font.custom("Avenir Next Condensed", size: 42).weight(.semibold)
     static let titleFont   = Font.custom("Avenir Next", size: 14).weight(.semibold)

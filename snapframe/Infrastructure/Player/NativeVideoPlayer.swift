@@ -15,13 +15,10 @@ final class NativeVideoPlayer {
     private(set) var isMuted: Bool = false
     private(set) var volume: Double = 100
     private(set) var speed: Double = 1
-    private(set) var statusText: String = "Drop a video to start"
     private(set) var lastError: String?
 
     private(set) var capturedCGImage: CGImage?
     private(set) var capturedPTS: Double?
-    private(set) var holdsFramePreview = false
-    private(set) var displayEpoch: UInt64 = 0
 
     let avPlayer = AVPlayer()
 
@@ -37,7 +34,6 @@ final class NativeVideoPlayer {
     private var openToken: UInt64 = 0
     private var fpsValue: Double = 30
     private var videoCodecName: String?
-    private var hasCapture = false
     private var endObserver: NSObjectProtocol?
     private var isScrubbing = false
 
@@ -49,30 +45,14 @@ final class NativeVideoPlayer {
         installTimeObserver()
     }
 
-    func shutdown() {
-        if let timeObserver {
-            avPlayer.removeTimeObserver(timeObserver)
-            self.timeObserver = nil
-        }
-        if let endObserver {
-            NotificationCenter.default.removeObserver(endObserver)
-            self.endObserver = nil
-        }
-        cancelOpen()
-        avPlayer.pause()
-        avPlayer.replaceCurrentItem(with: nil)
-    }
-
     func beginOpen(url: URL) {
         openToken &+= 1
         let token = openToken
         lastError = nil
-        statusText = url.lastPathComponent
         isPaused = true
         frameImage = nil
         capturedCGImage = nil
         capturedPTS = nil
-        hasCapture = false
         position = 0
         duration = 0
         videoSize = .zero
@@ -124,16 +104,12 @@ final class NativeVideoPlayer {
         frameImage = nil
         capturedCGImage = nil
         capturedPTS = nil
-        hasCapture = false
         position = 0
         duration = 0
         videoSize = .zero
         videoCodecName = nil
         isPaused = true
-        holdsFramePreview = false
-        statusText = "Drop a video to start"
         lastError = nil
-        displayEpoch &+= 1
     }
 
     func togglePause() { pause(!isPaused) }
@@ -143,7 +119,6 @@ final class NativeVideoPlayer {
             avPlayer.pause()
             isPaused = true
         } else {
-            holdsFramePreview = false
             avPlayer.isMuted = isMuted
             avPlayer.volume = Float(volume / 100)
             applyPlaybackRate(speed)
@@ -179,12 +154,6 @@ final class NativeVideoPlayer {
         isScrubbing = enabled
     }
 
-    func setCaptureSuspended(_ suspended: Bool) {}
-
-    func setPlaybackCaptureSuppressed(_ suspended: Bool) {}
-
-    func applyPlaybackPreferences() {}
-
     func seek(seconds: Double, precise: Bool) {
         guard avPlayer.currentItem != nil else { return }
         let t = clampedTime(seconds)
@@ -194,10 +163,9 @@ final class NativeVideoPlayer {
         let frameDur = 1 / max(fps, 24)
         let slack = precise ? frameDur * 0.25 : frameDur * 2
         let tol = CMTime(seconds: slack, preferredTimescale: 60_000)
+        avPlayer.currentItem?.cancelPendingSeeks()
         avPlayer.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
     }
-
-    func refreshScrubPreview() {}
 
     @discardableResult
     func captureExactFrame() -> Bool {
@@ -205,7 +173,7 @@ final class NativeVideoPlayer {
     }
 
     @discardableResult
-    func refreshFrame(preferQuality: Bool = true) -> Bool {
+    func refreshFrame() -> Bool {
         Task { @MainActor [weak self] in
             guard let self else { return }
             _ = self.captureFrame(at: self.position, updatePreview: false)
@@ -260,8 +228,6 @@ final class NativeVideoPlayer {
         }
     }
 
-    // MARK: - Private
-
     private func loadAsset(_ asset: AVURLAsset, token: UInt64) async {
         do {
             let playable = try await asset.load(.isPlayable)
@@ -313,7 +279,6 @@ final class NativeVideoPlayer {
             if let preview = await snapshotImage(at: 0) {
                 guard token == openToken else { return }
                 frameImage = preview
-                displayEpoch &+= 1
             }
         } catch {
             guard token == openToken else { return }
@@ -349,11 +314,9 @@ final class NativeVideoPlayer {
             let cg = try generator.copyCGImage(at: time, actualTime: &actualTime)
             capturedCGImage = cg
             capturedPTS = actualTime.seconds.isFinite ? actualTime.seconds : t
-            hasCapture = true
             lastError = nil
             if updatePreview {
                 frameImage = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-                displayEpoch &+= 1
             }
             return true
         } catch {

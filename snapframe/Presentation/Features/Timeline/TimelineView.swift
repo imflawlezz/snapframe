@@ -9,13 +9,13 @@ struct TimelineView: View {
     var seekInput: Binding<String>
     var jumpMode: Binding<JumpMode>
     @Binding var followPlayhead: Bool
+    @Binding var snapToCues: Bool
     var onSeek: (Double, Bool) -> Void
-    var onMarker: (String) -> Void
     var onJumpSubmit: () -> Void
+    var snapSeek: (Double) -> Double = { $0 }
 
     @State private var dragging = false
     @State private var dragPosition: Double = 0
-    @State private var jumpedToMarker = false
     @State private var zoom: Double = 1
     @State private var viewStart: Double = 0
     @State private var scrollbarDragging = false
@@ -69,7 +69,10 @@ struct TimelineView: View {
 
     private var seekRow: some View {
         HStack(spacing: 8) {
-            followPlayheadButton
+            HStack(spacing: 4) {
+                followPlayheadButton
+                snapToCuesButton
+            }
 
             SegmentToggle(selection: jumpMode)
 
@@ -140,6 +143,23 @@ struct TimelineView: View {
         .disabled(duration <= 0 || !canPan)
         .opacity(duration <= 0 || !canPan ? 0.4 : 1)
         .snapTooltip("Follow playhead", shortcut: "P")
+    }
+
+    private var snapToCuesButton: some View {
+        Button {
+            snapToCues.toggle()
+        } label: {
+            Image(systemName: "arrowtriangle.right.and.line.vertical.and.arrowtriangle.left.fill")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .buttonStyle(ToolButtonStyle(
+            kind: snapToCues ? .accent : .normal,
+            width: 28,
+            height: 26
+        ))
+        .disabled(duration <= 0)
+        .opacity(duration <= 0 ? 0.4 : 1)
+        .snapTooltip("Snap to cues", shortcut: "S")
     }
 
     private var zoomControls: some View {
@@ -515,22 +535,13 @@ struct TimelineView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard duration > 0 else { return }
-                let t = snapFrame(time(at: value.location.x, track: track))
+                let t = snapSeek(snapFrame(time(at: value.location.x, track: track)))
                 if !dragging {
-                    if let m = hitMarker(at: value.location.x, track: track), let cid = m.cueID {
-                        onMarker(cid)
-                        dragging = true
-                        jumpedToMarker = true
-                        dragPosition = t
-                        return
-                    }
                     dragging = true
-                    jumpedToMarker = false
                     dragPosition = t
                     onSeek(t, false)
                     return
                 }
-                if jumpedToMarker { return }
                 dragPosition = t
                 let now = Date()
                 if now.timeIntervalSince(lastScrubPreviewAt) >= (1.0 / 60.0) {
@@ -540,12 +551,8 @@ struct TimelineView: View {
             }
             .onEnded { value in
                 guard duration > 0 else { return }
-                defer {
-                    dragging = false
-                    jumpedToMarker = false
-                }
-                if jumpedToMarker { return }
-                let t = snapFrame(time(at: value.location.x, track: track))
+                defer { dragging = false }
+                let t = snapSeek(snapFrame(time(at: value.location.x, track: track)))
                 dragPosition = t
                 onSeek(t, true)
             }
@@ -645,24 +652,20 @@ struct TimelineView: View {
         return min(max(0, start), maxStart)
     }
 
-    private func hitMarker(at x: CGFloat, track: CGRect) -> TimelineMarker? {
-        markers.min(by: { abs(xPos($0.t, track: track) - x) < abs(xPos($1.t, track: track) - x) })
-            .flatMap { abs(xPos($0.t, track: track) - x) < 10 ? $0 : nil }
-    }
-
     @ViewBuilder
     private func markerView(_ m: TimelineMarker, track: CGRect) -> some View {
         let x = xPos(m.t, track: track)
         let color: Color = switch m.kind {
-        case .crop: SnapTheme.warn
+        case .crop, .cropActive: SnapTheme.crop
         case .cueDone: SnapTheme.good
-        case .cueActive: SnapTheme.ink
-        case .cuePending: SnapTheme.warn.opacity(0.55)
+        case .cueActive: SnapTheme.cue
+        case .cuePending: SnapTheme.cuePending
         }
+        let thick = m.kind == .cueActive || m.kind == .cropActive
         VStack(spacing: 0) {
             Rectangle()
                 .fill(color.opacity(0.9))
-                .frame(width: m.kind == .cueActive ? 2 : 1.5, height: track.height - 4)
+                .frame(width: thick ? 2 : 1.5, height: track.height - 4)
         }
         .position(x: x, y: track.midY)
     }

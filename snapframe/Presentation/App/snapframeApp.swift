@@ -108,20 +108,29 @@ struct snapframeApp: App {
                 Button("Speed 2×") { state.player.setSpeed(2) }
                     .keyboardShortcut("3", modifiers: [])
                 Divider()
+                Button("Go to Start") { state.goToStart() }
+                    .keyboardShortcut(.return, modifiers: [])
                 Button("Follow Playhead") { state.followPlayhead.toggle() }
                     .keyboardShortcut("p", modifiers: [])
             }
             CommandMenu("Cues") {
+                Button("Add Cue at Playhead") { state.addCueAtPlayhead() }
+                    .keyboardShortcut("n", modifiers: [])
                 Button("Previous Cue") { state.prevCue() }
                     .keyboardShortcut("[", modifiers: [])
                 Button("Next Cue") { state.nextCue() }
                     .keyboardShortcut("]", modifiers: [])
                 Button("Delete Active Cue") { state.deleteActiveCue() }
                     .keyboardShortcut(.delete, modifiers: [])
+                Divider()
+                Button("Snap to Cues") { state.toggleSnapToCues() }
+                    .keyboardShortcut("s", modifiers: [])
             }
             CommandMenu("Crops") {
-                Button("Toggle Crop Overlay") { state.cropOverlayVisible.toggle() }
+                Button("Frame Crop") { state.toggleCropOverlay() }
                     .keyboardShortcut("c", modifiers: [])
+                Button("Scissors Crop") { state.toggleCropScissors() }
+                    .keyboardShortcut("x", modifiers: [])
                 Button("Aspect Lock") { state.toggleCropRatioLock() }
                     .keyboardShortcut("l", modifiers: [])
                 Button("Square Proportions") { state.toggleCropSquareLock() }

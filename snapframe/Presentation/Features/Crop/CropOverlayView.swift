@@ -5,11 +5,17 @@ struct CropOverlayView: NSViewRepresentable {
     var videoSize: CGSize
     @Binding var crop: CropRect
     var resizeLock: CropResizeLock = .free
+    var scissorsMode = false
     var accent: NSColor = NSColor(red: 0.12, green: 0.72, blue: 0.68, alpha: 1)
     var onInteractionChange: ((Bool) -> Void)?
+    var onScissorsComplete: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(crop: $crop, onInteractionChange: onInteractionChange)
+        Coordinator(
+            crop: $crop,
+            onInteractionChange: onInteractionChange,
+            onScissorsComplete: onScissorsComplete
+        )
     }
 
     func makeNSView(context: Context) -> CropCanvasView {
@@ -19,15 +25,18 @@ struct CropOverlayView: NSViewRepresentable {
         view.videoSize = videoSize
         view.crop = crop
         view.resizeLock = resizeLock
+        view.scissorsMode = scissorsMode
         return view
     }
 
     func updateNSView(_ nsView: CropCanvasView, context: Context) {
         context.coordinator.crop = $crop
         context.coordinator.onInteractionChange = onInteractionChange
+        context.coordinator.onScissorsComplete = onScissorsComplete
         nsView.accent = accent
         nsView.videoSize = videoSize
         nsView.resizeLock = resizeLock
+        nsView.scissorsMode = scissorsMode
         nsView.needsDisplay = true
         guard !nsView.isInteracting else { return }
         if nsView.crop != crop {
@@ -39,9 +48,15 @@ struct CropOverlayView: NSViewRepresentable {
     final class Coordinator {
         var crop: Binding<CropRect>
         var onInteractionChange: ((Bool) -> Void)?
-        init(crop: Binding<CropRect>, onInteractionChange: ((Bool) -> Void)?) {
+        var onScissorsComplete: (() -> Void)?
+        init(
+            crop: Binding<CropRect>,
+            onInteractionChange: ((Bool) -> Void)?,
+            onScissorsComplete: (() -> Void)?
+        ) {
             self.crop = crop
             self.onInteractionChange = onInteractionChange
+            self.onScissorsComplete = onScissorsComplete
         }
         func commit(_ value: CropRect) {
             if crop.wrappedValue != value {
@@ -51,6 +66,9 @@ struct CropOverlayView: NSViewRepresentable {
         func setInteracting(_ active: Bool) {
             onInteractionChange?(active)
         }
+        func scissorsComplete() {
+            onScissorsComplete?()
+        }
     }
 }
 
@@ -58,6 +76,15 @@ final class CropCanvasView: NSView {
     weak var coordinator: CropOverlayView.Coordinator?
     var accent: NSColor = .systemTeal
     var resizeLock: CropResizeLock = .free
+    var scissorsMode = false {
+        didSet {
+            guard oldValue != scissorsMode else { return }
+            if !scissorsMode { cancelScissorsDrag() }
+            scissorsLive = false
+            window?.invalidateCursorRects(for: self)
+            needsDisplay = true
+        }
+    }
     var videoSize: CGSize = .zero {
         didSet { if oldValue != videoSize { needsDisplay = true } }
     }
@@ -84,6 +111,8 @@ final class CropCanvasView: NSView {
     private var presentedLetter = CGRect.zero
     private var presentedCrop = CGRect.zero
     private var layoutTimer: Timer?
+    private var scissorsLive = false
+    private var preDragCrop = CropRect.default
 
     var isInteracting: Bool { mode != .none }
 
@@ -145,6 +174,8 @@ final class CropCanvasView: NSView {
             presentedCrop = cropTarget
         }
 
+        if scissorsMode && !scissorsLive { return }
+
         let dim = NSColor.black.withAlphaComponent(dimAlpha)
         dim.setFill()
         let path = NSBezierPath(rect: letter)
@@ -170,25 +201,27 @@ final class CropCanvasView: NSView {
         thirds.lineWidth = 1
         thirds.stroke()
 
-        accent.setFill()
-        NSColor.white.setStroke()
-        for p in cornerPoints(r) {
-            let hr = NSRect(x: p.x - handleRadius, y: p.y - handleRadius,
-                            width: handleRadius * 2, height: handleRadius * 2)
-            let h = NSBezierPath(ovalIn: hr)
-            h.fill()
-            h.lineWidth = 1.5
-            h.stroke()
-        }
+        if !scissorsMode {
+            accent.setFill()
+            NSColor.white.setStroke()
+            for p in cornerPoints(r) {
+                let hr = NSRect(x: p.x - handleRadius, y: p.y - handleRadius,
+                                width: handleRadius * 2, height: handleRadius * 2)
+                let h = NSBezierPath(ovalIn: hr)
+                h.fill()
+                h.lineWidth = 1.5
+                h.stroke()
+            }
 
-        accent.withAlphaComponent(0.9).setFill()
-        NSColor.white.setStroke()
-        for p in edgeMidpoints(r) {
-            let hr = NSRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)
-            let h = NSBezierPath(ovalIn: hr)
-            h.fill()
-            h.lineWidth = 1
-            h.stroke()
+            accent.withAlphaComponent(0.9).setFill()
+            NSColor.white.setStroke()
+            for p in edgeMidpoints(r) {
+                let hr = NSRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)
+                let h = NSBezierPath(ovalIn: hr)
+                h.fill()
+                h.lineWidth = 1
+                h.stroke()
+            }
         }
 
         let off = crop.centerOffset(in: videoSize)
@@ -260,6 +293,11 @@ final class CropCanvasView: NSView {
         origin = crop
         startPoint = p
 
+        if scissorsMode {
+            beginScissors(at: p, letter: letter, scale: scale)
+            return
+        }
+
         for m in [Mode.nw, .ne, .sw, .se] where hitCorner(m, in: r, point: p) {
             beginResize(m)
             return
@@ -286,11 +324,18 @@ final class CropCanvasView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard videoSize.width > 0, mode != .none, mode != .place else { return }
+        guard videoSize.width > 0, mode != .none else { return }
         let p = convert(event.locationInWindow, from: nil)
         let letter = letterbox(in: bounds.size)
         let scale = letter.width / videoSize.width
         guard scale > 0 else { return }
+
+        if scissorsMode, mode == .place {
+            scissorsLive = true
+            apply(scissorsCrop(to: p, letter: letter, scale: scale), commit: false)
+            return
+        }
+        if mode == .place { return }
 
         if mode == .move {
             let dx = (p.x - startPoint.x) / scale
@@ -308,6 +353,25 @@ final class CropCanvasView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if scissorsMode, mode == .place {
+            let didDrag = scissorsLive
+            scissorsLive = false
+            let valid = didDrag && crop.width >= minCrop && crop.height >= minCrop
+            if valid {
+                coordinator?.commit(crop)
+            } else {
+                apply(preDragCrop, commit: true)
+            }
+            mode = .none
+            coordinator?.setInteracting(false)
+            window?.invalidateCursorRects(for: self)
+            if valid {
+                DispatchQueue.main.async { [weak self] in
+                    self?.coordinator?.scissorsComplete()
+                }
+            }
+            return
+        }
         switch mode {
         case .move, .nw, .ne, .sw, .se, .n, .e, .s, .w:
             coordinator?.commit(crop)
@@ -319,7 +383,7 @@ final class CropCanvasView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard videoSize.width > 0 else {
+        guard videoSize.width > 0, !scissorsMode else {
             nextResponder?.scrollWheel(with: event)
             return
         }
@@ -354,6 +418,10 @@ final class CropCanvasView: NSView {
     override func resetCursorRects() {
         guard videoSize.width > 0 else { return }
         let letter = letterbox(in: bounds.size)
+        if scissorsMode {
+            addCursorRect(letter, cursor: .crosshair)
+            return
+        }
         let scale = letter.width / videoSize.width
         let r = viewRect(letter: letter, scale: scale)
         addCursorRect(r, cursor: .openHand)
@@ -471,6 +539,42 @@ final class CropCanvasView: NSView {
 
     private func hitEdge(_ m: Mode, in r: CGRect, point: CGPoint) -> Bool {
         edgeHitRect(m, in: r).contains(point)
+    }
+
+    private func beginScissors(at p: CGPoint, letter: CGRect, scale: CGFloat) {
+        preDragCrop = crop
+        scissorsLive = false
+        let vx = min(max(0, (p.x - letter.minX) / scale), videoSize.width)
+        let vy = min(max(0, (p.y - letter.minY) / scale), videoSize.height)
+        anchor = CGPoint(x: vx, y: vy)
+        origin = CropRect(x: Int(vx.rounded()), y: Int(vy.rounded()), width: minCrop, height: minCrop)
+        mode = .place
+        coordinator?.setInteracting(true)
+        needsDisplay = true
+    }
+
+    private func scissorsCrop(to p: CGPoint, letter: CGRect, scale: CGFloat) -> CropRect {
+        let mx = min(max(0, (p.x - letter.minX) / scale), videoSize.width)
+        let my = min(max(0, (p.y - letter.minY) / scale), videoSize.height)
+        let corner: Mode
+        if mx >= anchor.x && my >= anchor.y {
+            corner = .se
+        } else if mx < anchor.x && my >= anchor.y {
+            corner = .sw
+        } else if mx >= anchor.x && my < anchor.y {
+            corner = .ne
+        } else {
+            corner = .nw
+        }
+        return resizeCorner(mode: corner, mouse: CGPoint(x: mx, y: my))
+    }
+
+    private func cancelScissorsDrag() {
+        guard mode == .place else { return }
+        apply(preDragCrop, commit: false)
+        mode = .none
+        scissorsLive = false
+        coordinator?.setInteracting(false)
     }
 
     private func beginResize(_ m: Mode) {
