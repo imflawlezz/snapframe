@@ -252,6 +252,15 @@ struct InspectorPane: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Reveal in Finder") {
+                state.revealCrop(at: index)
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                state.deleteCrop(at: index)
+            }
+        }
         .onHover { isHover in
             if isHover {
                 hoveringCropIndex = index
@@ -285,6 +294,7 @@ private struct CueInspectorRow: View {
 
     @State private var timeText = ""
     @State private var labelText = ""
+    @State private var hovering = false
     @State private var clickMonitor: Any?
 
     var body: some View {
@@ -309,9 +319,10 @@ private struct CueInspectorRow: View {
         }
         .padding(.horizontal, compact ? 6 : 8)
         .padding(.vertical, compact ? 3 : 4)
-        .background(active ? SnapTheme.accentSoft : Color.clear)
+        .background(rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .contextMenu {
             Button("Edit") { onBeginEdit() }
             Button(cue.done ? "Mark Pending" : "Mark Done") { onToggleDone() }
@@ -339,6 +350,12 @@ private struct CueInspectorRow: View {
                 removeClickMonitor()
             }
         }
+    }
+
+    private var rowBackground: Color {
+        if active { return SnapTheme.accentSoft }
+        if hovering { return SnapTheme.accentSoft.opacity(0.45) }
+        return Color.clear
     }
 
     private var displayRow: some View {

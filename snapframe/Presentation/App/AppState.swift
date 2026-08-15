@@ -560,6 +560,17 @@ final class AppState {
         syncSeekInputFromPlayer()
     }
 
+    func revealCrop(at index: Int) {
+        guard let store = cropStore,
+              store.entries.indices.contains(index) else { return }
+        let url = store.cropsFolder.appendingPathComponent(store.entries[index].file)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            errorMessage = "Crop file not found."
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
     func deleteCrop(at index: Int) {
         do {
             try cropStore?.remove(at: index)
