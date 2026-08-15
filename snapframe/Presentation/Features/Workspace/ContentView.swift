@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Bindable var state: AppState
-    @Binding var showingAbout: Bool
+    @Binding var showingPreferences: Bool
     @State private var theme = AppTheme.shared
     @State private var recents = RecentVideosStore.shared
     @Bindable private var prefs = UserPreferences.shared
@@ -41,7 +41,7 @@ struct ContentView: View {
             ))
         )
         .preferredColorScheme(theme.swiftUIScheme)
-        .sheet(isPresented: $showingAbout) {
+        .sheet(isPresented: $showingPreferences) {
             PreferencesSheet(onOpen: {
                 state.player.pause(true)
             })
@@ -148,7 +148,7 @@ struct ContentView: View {
                 .buttonStyle(ToolButtonStyle(kind: .accent, width: 200, height: 44))
 
                 Button {
-                    showingAbout = true
+                    showingPreferences = true
                 } label: {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 13, weight: .semibold))
@@ -361,7 +361,7 @@ struct ContentView: View {
                         tooltip: "Preferences",
                         shortcut: "⌘,"
                     ) {
-                        showingAbout = true
+                        showingPreferences = true
                     }
                 }
             }
@@ -427,10 +427,10 @@ struct ContentView: View {
                 HStack(spacing: 4) {
                     ToolButton(
                         systemName: "backward.end.fill",
-                        tooltip: "Go to start"
+                        tooltip: "Go to start",
+                        shortcut: "Return"
                     ) {
-                        state.player.pause(true)
-                        state.onTimelineSeek(seconds: 0, precise: true)
+                        state.goToStart()
                     }
                     ToolButton(
                         systemName: state.player.isPaused ? "play.fill" : "pause.fill",

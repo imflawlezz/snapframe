@@ -5,12 +5,15 @@ import SwiftUI
 struct snapframeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var state = AppState()
-    @State private var showingAbout = false
+    @State private var showingPreferences = false
     @State private var recents = RecentVideosStore.shared
 
     var body: some Scene {
         WindowGroup {
-            ContentView(state: state, showingAbout: $showingAbout)
+            ContentView(
+                state: state,
+                showingPreferences: $showingPreferences
+            )
                 .onAppear {
                     NSWindow.allowsAutomaticWindowTabbing = false
                     AppTheme.shared.applyToWindows()
@@ -29,6 +32,11 @@ struct snapframeApp: App {
         }
         .defaultSize(width: 1360, height: 860)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About \(AppInfo.name)") {
+                    AppInfo.showAboutPanel()
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Video…") { state.openVideo() }
                     .keyboardShortcut("o", modifiers: [.command])
@@ -67,14 +75,12 @@ struct snapframeApp: App {
                     .keyboardShortcut("\\", modifiers: [.command])
             }
             CommandGroup(replacing: .appSettings) {
-                Button("Preferences…") { showingAbout = true }
+                Button("Preferences…") { showingPreferences = true }
                     .keyboardShortcut(",", modifiers: [.command])
             }
             CommandGroup(replacing: .help) {
-                Button("Snapframe Help") {
-                    if let url = URL(string: "https://github.com/imflawlezz") {
-                        NSWorkspace.shared.open(url)
-                    }
+                Button("\(AppInfo.name) on GitHub") {
+                    NSWorkspace.shared.open(AppInfo.repositoryURL)
                 }
             }
             CommandMenu("Playback") {
