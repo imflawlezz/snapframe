@@ -7,14 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-08-15
+
 ### Added
 
-- Scissors crop (**X**): drag a region and save on release; mutually exclusive with Frame crop; **Esc** exits the mode
+- **Scissors crop** (**X**): drag a region and save on release; hold **Shift** for a square; **Esc** exits; mutually exclusive with Frame crop
+- Scissors hover readout of center-offset frame coordinates (`+x, +y`) near the cursor
 - Add cue at playhead (**N**), creating/updating `Movie.cues.json` beside the source
 - In-inspector cue editing (double-click or context menu), plus Mark Done and Delete
-- Snap to cues (**S**) on the timeline, with separate time- and frame-based ranges in Preferences
+- **Snap to cues** (**S**) on the timeline, with separate time- and frame-based ranges in Preferences
 - Go to start (**Return**) when focus is outside a text field (Playback menu included)
 - Compact inspector layout for narrow widths (single-line crop rows; filename in the wide layout only)
+- Custom About window in native macOS panel style (blurb, stack, “Made with ♥ by imflawlezz”)
+- Crop inspector context menu: Reveal in Finder and Delete
 - `snapframeTests` target, shared test scheme/plan, and unit tests for timecode parsing, digit-field filtering, crop geometry, cue/crop stores, and `SaveCropUseCase`
 
 ### Changed
@@ -141,7 +146,8 @@ First public release.
 - Downloaded builds may need quarantine cleared (`xattr` or right-click Open)
 - Licensed under MIT; mpv remained a separate GPL-licensed dependency
 
-[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.3.0
 [1.2.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.2.0
 [1.1.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.1.0
 [1.0.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.0.0
