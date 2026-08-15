@@ -19,11 +19,7 @@ struct PreferencesSheet: View {
                         schemePicker
                             .frame(maxWidth: .infinity)
                     }
-                    preferenceToggle(
-                        label: "Pause on focus loss",
-                        detail: "Pause playback when the window loses focus",
-                        isOn: $prefs.pauseOnFocusLoss
-                    )
+                    preferenceToggle("Pause in background", isOn: $prefs.pauseOnFocusLoss)
 
                     sectionHeader("Export")
                     preferenceRow(label: "Format") {
@@ -43,35 +39,25 @@ struct PreferencesSheet: View {
                             .frame(maxWidth: .infinity)
                         }
                     }
-                    preferenceToggle(
-                        label: "Mark cue done on save",
-                        detail: "Mark nearest cue complete when saving a crop",
-                        isOn: $prefs.markCueDoneOnSave
-                    )
-                    preferenceToggle(
-                        label: "Jump to next cue after save",
-                        detail: "Go to the next pending cue after a successful save",
-                        isOn: $prefs.advanceToNextCueAfterSave
-                    )
+                    preferenceToggle("Mark cue done after save", isOn: $prefs.markCueDoneOnSave)
+                    preferenceToggle("Skip to next cue after save", isOn: $prefs.advanceToNextCueAfterSave)
 
                     sectionHeader("Cues")
-                    preferenceToggle(
-                        label: "Auto-import sidecar",
-                        detail: "Load video.cues.json next to the file on open",
-                        isOn: $prefs.autoImportSidecarCues
-                    )
-                    preferenceRow(label: "Snap range (time)") {
+                    preferenceToggle("Open cues file with video", isOn: $prefs.autoImportSidecarCues)
+
+                    sectionHeader("Snap")
+                    preferenceRow(label: "Seconds") {
                         HStack(spacing: 10) {
                             Slider(value: $prefs.cueSnapToleranceSeconds, in: 0.05...2.0)
                                 .tint(SnapTheme.accent)
-                            Text(String(format: "%.2f s", prefs.cueSnapToleranceSeconds))
+                            Text(String(format: "%.2f", prefs.cueSnapToleranceSeconds))
                                 .font(SnapTheme.mono)
                                 .foregroundStyle(SnapTheme.inkSecondary)
-                                .frame(width: 52, alignment: .trailing)
+                                .frame(width: 40, alignment: .trailing)
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    preferenceRow(label: "Snap range (frame)") {
+                    preferenceRow(label: "Frames") {
                         HStack(spacing: 10) {
                             Slider(
                                 value: Binding(
@@ -82,10 +68,10 @@ struct PreferencesSheet: View {
                                 step: 1
                             )
                             .tint(SnapTheme.accent)
-                            Text("\(prefs.cueSnapToleranceFrames) f")
+                            Text("\(prefs.cueSnapToleranceFrames)")
                                 .font(SnapTheme.mono)
                                 .foregroundStyle(SnapTheme.inkSecondary)
-                                .frame(width: 52, alignment: .trailing)
+                                .frame(width: 40, alignment: .trailing)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -106,67 +92,28 @@ struct PreferencesSheet: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(alignment: .center, spacing: 14) {
-                if let icon = NSApp.applicationIconImage {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .frame(width: 48, height: 48)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("SNAPFRAME")
-                        .font(.custom("Avenir Next Condensed", size: 28).weight(.semibold))
-                        .tracking(4)
-                        .foregroundStyle(SnapTheme.ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    Text(appVersionLabel)
-                        .font(SnapTheme.bodyFont)
-                        .foregroundStyle(SnapTheme.inkSecondary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: true)
-                }
-                .layoutPriority(1)
+        HStack(alignment: .center, spacing: 14) {
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 48, height: 48)
             }
-
-            Spacer(minLength: 8)
-
-            Button {
-                if let url = URL(string: "https://github.com/imflawlezz") {
-                    NSWorkspace.shared.open(url)
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text("Made with")
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.92, green: 0.28, blue: 0.36))
-                    Text("by imflawlezz")
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(SnapTheme.inkSecondary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(SnapTheme.chip)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(SnapTheme.stroke, lineWidth: 1)
-                )
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Preferences")
+                    .font(.custom("Avenir Next Condensed", size: 28).weight(.semibold))
+                    .tracking(1)
+                    .foregroundStyle(SnapTheme.ink)
+                    .lineLimit(1)
+                Text(AppInfo.versionLabel)
+                    .font(SnapTheme.bodyFont)
+                    .foregroundStyle(SnapTheme.inkSecondary)
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .snapTooltip("github.com/imflawlezz")
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .background(SnapTheme.panel)
-    }
-
-    private var appVersionLabel: String {
-        AppInfo.versionLabel
     }
 
     private var footer: some View {
@@ -253,12 +200,12 @@ struct PreferencesSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(SnapTheme.stroke, lineWidth: 1))
     }
 
-    private func preferenceRow<C: View>(label: String, @ViewBuilder content: () -> C) -> some View {
+    private func preferenceRow(label: String, @ViewBuilder content: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 16) {
             Text(label)
                 .font(SnapTheme.bodyFont)
                 .foregroundStyle(SnapTheme.ink)
-                .frame(width: 120, alignment: .leading)
+                .frame(width: 168, alignment: .leading)
             content()
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
@@ -266,17 +213,11 @@ struct PreferencesSheet: View {
         .padding(.vertical, 8)
     }
 
-    private func preferenceToggle(label: String, detail: String, isOn: Binding<Bool>) -> some View {
+    private func preferenceToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(SnapTheme.bodyFont)
-                    .foregroundStyle(SnapTheme.ink)
-                Text(detail)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(SnapTheme.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(label)
+                .font(SnapTheme.bodyFont)
+                .foregroundStyle(SnapTheme.ink)
             Spacer(minLength: 12)
             Toggle("", isOn: isOn)
                 .toggleStyle(.switch)
