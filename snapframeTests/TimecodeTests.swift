@@ -133,8 +133,6 @@ final class TimecodeTests: XCTestCase {
         XCTAssertEqual(Timecode.snapped(seconds: 1.5, fps: 0), 1.5, accuracy: 0.0001)
     }
 
-    // MARK: -
-
     private func hms(_ hours: Int, _ minutes: Int, _ seconds: Double) -> Double {
         Double(hours * 3600 + minutes * 60) + seconds
     }
