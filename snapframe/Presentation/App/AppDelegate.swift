@@ -4,6 +4,15 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openVideo: ((URL) -> Void)?
+    var onQuit: (() -> Void)?
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        onQuit?()
+    }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let items = RecentVideosStore.shared.items

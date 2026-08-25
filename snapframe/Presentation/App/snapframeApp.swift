@@ -21,6 +21,9 @@ struct snapframeApp: App {
                     appDelegate.openVideo = { [state] url in
                         state.loadVideo(url)
                     }
+                    appDelegate.onQuit = { [state] in
+                        state.player.pause(true)
+                    }
                     openLaunchArgumentIfPresent()
                 }
                 .onOpenURL { url in
