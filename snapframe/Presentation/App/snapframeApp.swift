@@ -40,6 +40,11 @@ struct snapframeApp: App {
                     AppInfo.showAboutPanel()
                 }
             }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    UpdateCheckPresenter.checkForUpdates()
+                }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open Video…") { state.openVideo() }
                     .keyboardShortcut("o", modifiers: [.command])
