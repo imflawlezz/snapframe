@@ -1,17 +1,17 @@
 import Foundation
 
-enum UpdateCheckResult: Equatable {
+nonisolated enum UpdateCheckResult: Equatable, Sendable {
     case upToDate(current: String)
     case available(latest: String, releaseURL: URL, downloadURL: URL?)
     case failed(message: String)
 }
 
-enum GitHubUpdateChecker {
+nonisolated enum GitHubUpdateChecker {
     private static let releasesURL = URL(string: "https://api.github.com/repos/imflawlezz/snapframe/releases/latest")!
 
-    static func check(currentVersion: String = AppInfo.shortVersion) async -> UpdateCheckResult {
+    static func check(currentVersion: String) async -> UpdateCheckResult {
         do {
-            let release = try await fetchLatestRelease()
+            let release = try await fetchLatestRelease(userAgentVersion: currentVersion)
             let latest = normalizeVersion(release.tagName)
             let current = normalizeVersion(currentVersion)
             guard !latest.isEmpty else {
@@ -21,7 +21,7 @@ enum GitHubUpdateChecker {
                 return .available(
                     latest: latest,
                     releaseURL: release.htmlURL,
-                    downloadURL: release.preferredDownloadURL
+                    downloadURL: preferredDownloadURL(in: release.assets)
                 )
             }
             return .upToDate(current: current.isEmpty ? currentVersion : current)
@@ -57,9 +57,16 @@ enum GitHubUpdateChecker {
         }
     }
 
-    private static func fetchLatestRelease() async throws -> GitHubRelease {
+    private static func preferredDownloadURL(in assets: [GitHubRelease.Asset]) -> URL? {
+        if let dmg = assets.first(where: { $0.name.lowercased().hasSuffix(".dmg") }) {
+            return dmg.browserDownloadURL
+        }
+        return assets.first?.browserDownloadURL
+    }
+
+    private static func fetchLatestRelease(userAgentVersion: String) async throws -> GitHubRelease {
         var request = URLRequest(url: releasesURL)
-        request.setValue("Snapframe/\(AppInfo.shortVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Snapframe/\(userAgentVersion)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
 
@@ -71,7 +78,7 @@ enum GitHubUpdateChecker {
     }
 }
 
-private struct GitHubRelease: Decodable {
+nonisolated private struct GitHubRelease: Decodable, Sendable {
     let tagName: String
     let htmlURL: URL
     let assets: [Asset]
@@ -82,7 +89,7 @@ private struct GitHubRelease: Decodable {
         case assets
     }
 
-    struct Asset: Decodable {
+    struct Asset: Decodable, Sendable {
         let name: String
         let browserDownloadURL: URL
 
@@ -90,12 +97,5 @@ private struct GitHubRelease: Decodable {
             case name
             case browserDownloadURL = "browser_download_url"
         }
-    }
-
-    var preferredDownloadURL: URL? {
-        if let dmg = assets.first(where: { $0.name.lowercased().hasSuffix(".dmg") }) {
-            return dmg.browserDownloadURL
-        }
-        return assets.first?.browserDownloadURL
     }
 }

@@ -9,7 +9,8 @@ enum UpdateCheckPresenter {
         isChecking = true
 
         Task {
-            let result = await GitHubUpdateChecker.check()
+            let currentVersion = AppInfo.shortVersion
+            let result = await GitHubUpdateChecker.check(currentVersion: currentVersion)
             isChecking = false
             present(result)
         }
