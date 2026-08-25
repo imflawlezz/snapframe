@@ -7,7 +7,7 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 | | |
 |---|---|
 | **Platform** | macOS |
-| **Version** | 1.3.0 |
+| **Version** | 1.4.0 |
 | **License** | [MIT](LICENSE) |
 | **Playback** | AVFoundation |
 
@@ -15,7 +15,7 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 
 ## Install
 
-1. Open `Snapframe_1.3.0.dmg`.
+1. Open `Snapframe_1.4.0.dmg`.
 2. Drag **Snapframe.app** into **Applications**.
 3. Double-click **Quarantine.command** in the DMG.  
    If macOS blocks it: right-click → **Open** → **Open**.
@@ -45,6 +45,7 @@ Or right-click the app → **Open**.
 - Transport: playback, frame skip, time skip (−5s…+5s), speed, go to start
 - Recents with thumbnails
 - Light / Dark / System appearance
+- Check for Updates… via the latest GitHub release
 - Keyboard-first workflow (physical keys, any input layout)
 
 ---
@@ -127,6 +128,7 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 | ⌘R | Refresh preview |
 | ⌘\\ | Toggle inspector |
 | ⌘, | Preferences |
+| Snapframe → Check for Updates… | Compare with latest GitHub release |
 
 ---
 
@@ -150,11 +152,10 @@ xcodebuild test -scheme snapframeTests -destination 'platform=macOS'
 snapframe/
   Domain/           entities + ports (CropRepository, CueRepository, ImageEncoding)
   Application/      use cases (e.g. SaveCropUseCase)
-  Infrastructure/   AVFoundation player, stores, file access, image encode
+  Infrastructure/   AVFoundation player, stores, file access, image encode, GitHub update check
   Presentation/     SwiftUI + AppKit UI, AppState composition root
-  snapframeTests/   XCTest coverage for domain and persistence
+  snapframeTests/   XCTest coverage for domain, persistence, and update version compare
 ```
-
 `AppState` is the composition root: it owns Infrastructure types and drives the one Application use case (`SaveCropUseCase`). Domain stays Foundation / CoreGraphics only.
 
 ---

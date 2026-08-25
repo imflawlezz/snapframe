@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-08-25
+
+### Added
+
+- Check for Updates… in the app menu: compares the current version to the latest GitHub release and offers Download / View Release links
+
+### Fixed
+
+- Closing the last window quits the app and stops playback instead of leaving audio running in the background
+- Document types no longer claim ownership of video files (`LSHandlerRank` Alternate; only `.mp4` / `.m4v` / `.mov`), so Snapframe does not become the default opener
+
 ## [1.3.0] — 2026-08-15
 
 ### Added
@@ -146,7 +157,8 @@ First public release.
 - Downloaded builds may need quarantine cleared (`xattr` or right-click Open)
 - Licensed under MIT; mpv remained a separate GPL-licensed dependency
 
-[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.4.0
 [1.3.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.3.0
 [1.2.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.2.0
 [1.1.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.1.0
