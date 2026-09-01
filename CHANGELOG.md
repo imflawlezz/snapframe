@@ -7,6 +7,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-09-01
+
 ### Added
 
 - **Refresh** (**⌘R**) reloads cue and crop sidecars from disk; crop entries whose image files were deleted are removed from the inspector and `metadata.json`
@@ -183,7 +185,8 @@ First public release.
 - Downloaded builds may need quarantine cleared (`xattr` or right-click Open)
 - Licensed under MIT; mpv remained a separate GPL-licensed dependency
 
-[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/imflawlezz/snapframe/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.6.0
 [1.5.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.5.0
 [1.4.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.4.0
 [1.3.0]: https://github.com/imflawlezz/snapframe/releases/tag/v1.3.0
