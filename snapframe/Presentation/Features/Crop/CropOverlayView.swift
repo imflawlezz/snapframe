@@ -580,7 +580,7 @@ final class CropCanvasView: NSView {
             corner = .nw
         }
         let previousLock = resizeLock
-        if forceSquare { resizeLock = .square }
+        resizeLock = forceSquare ? .square : .free
         defer { resizeLock = previousLock }
         return resizeCorner(mode: corner, mouse: CGPoint(x: mx, y: my))
     }

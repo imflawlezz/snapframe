@@ -164,9 +164,9 @@ struct HotkeyCatcher: NSViewRepresentable {
                 state.toggleCropOverlay()
             case KeyCode.x:
                 state.toggleCropScissors()
-            case KeyCode.l where state.cropOverlayVisible || state.cropScissorsMode:
+            case KeyCode.l where state.cropOverlayVisible:
                 state.toggleCropRatioLock()
-            case KeyCode.r where state.cropOverlayVisible || state.cropScissorsMode:
+            case KeyCode.r where state.cropOverlayVisible:
                 state.toggleCropSquareLock()
             case KeyCode.p:
                 state.followPlayhead.toggle()

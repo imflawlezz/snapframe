@@ -25,7 +25,7 @@ struct VideoStage: View {
                 CropOverlayView(
                     videoSize: state.player.videoSize,
                     crop: $state.crop,
-                    resizeLock: state.cropResizeLock,
+                    resizeLock: state.cropScissorsChromeVisible ? .free : state.cropResizeLock,
                     scissorsMode: state.cropScissorsChromeVisible,
                     onInteractionChange: { state.setCropInteracting($0) },
                     onScissorsComplete: { state.saveCrop() }
