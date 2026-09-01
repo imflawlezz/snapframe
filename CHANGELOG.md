@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Paused still preview now shows the exact frame used for export, so the stage matches saved crops
+- Frame crop toolbar uses a shorter slide animation; the dim backdrop and crop overlay fade in after the toolbar settles, including when switching between **Frame crop** (**C**) and **Scissors** (**X**)
+- Inspector show/hide is more responsive; the crop dim overlay stays aligned with the video during sidebar resize and toolbar transitions
+
+### Fixed
+
+- Cue navigation, **Refresh Preview** (**⌘R**), add cue at playhead (**N**), and **Save crop** (**⌘S**) now stay on the frame shown in the viewer; exported crops carry the correct timecode, and **Mark cue done after save** marks the cue at the playhead
+- Frame crop overlay is shown again after returning from Home and reopening a video when **Frame crop** is still active
+
 ## [1.4.0] — 2026-08-25
 
 ### Added
