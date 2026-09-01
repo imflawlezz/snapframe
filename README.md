@@ -6,8 +6,8 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 
 | | |
 |---|---|
-| **Platform** | macOS |
-| **Version** | 1.4.0 |
+| **Platform** | macOS 14+ |
+| **Version** | 1.5.0 |
 | **License** | [MIT](LICENSE) |
 | **Playback** | AVFoundation |
 
@@ -15,7 +15,7 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 
 ## Install
 
-1. Open `Snapframe_1.4.0.dmg`.
+1. Open `Snapframe_1.5.0.dmg`.
 2. Drag **Snapframe.app** into **Applications**.
 3. Double-click **Quarantine.command** in the DMG.  
    If macOS blocks it: right-click → **Open** → **Open**.
@@ -34,7 +34,7 @@ Or right-click the app → **Open**.
 
 ## Features
 
-- Live video stage with frame-accurate scrubbing and still capture
+- Live video stage with frame-accurate scrubbing; paused preview matches the exported frame
 - Cue list: mark moments in-app (**N**), double-click to edit, or import a sidecar JSON
 - **Snap to cues** (**S**) with separate time / frame tolerances in Preferences
 - **Frame crop** overlay (width × height), optional **aspect lock** / **square**
@@ -134,7 +134,7 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 
 ## Build from source
 
-Requires **Xcode**.
+Requires **Xcode** on **macOS 14+**.
 
 ```bash
 open snapframe.xcodeproj
@@ -142,11 +142,42 @@ open snapframe.xcodeproj
 
 Select the **Snapframe** scheme and run (Debug or Release).
 
-Unit tests live in the **snapframeTests** scheme (⌘U in Xcode), or:
+### Tests
+
+In Xcode: **Product → Test** (⌘U) with the **Snapframe** or **snapframeTests** scheme.
+
+From the command line:
 
 ```bash
-xcodebuild test -scheme snapframeTests -destination 'platform=macOS'
+./Scripts/xcodebuild-ci.sh test \
+  -project snapframe.xcodeproj \
+  -scheme snapframe \
+  -destination 'platform=macOS'
 ```
+
+### Release build
+
+Build a universal Release app into `dist/`:
+
+```bash
+./Scripts/build-release.sh
+```
+
+Create a styled DMG (requires Python 3; installs `dmgbuild` into `dist/.dmg-venv` on first run):
+
+```bash
+./Scripts/make-dmg.sh
+```
+
+Or build and package in one step:
+
+```bash
+./Scripts/make-dmg.sh --build
+```
+
+Pushing a `v*` tag triggers the GitHub Actions release workflow: tests, universal build, DMG upload, and a draft GitHub release.
+
+### Architecture
 
 ```text
 snapframe/
@@ -156,6 +187,7 @@ snapframe/
   Presentation/     SwiftUI + AppKit UI, AppState composition root
   snapframeTests/   XCTest coverage for domain, persistence, and update version compare
 ```
+
 `AppState` is the composition root: it owns Infrastructure types and drives the one Application use case (`SaveCropUseCase`). Domain stays Foundation / CoreGraphics only.
 
 ---
