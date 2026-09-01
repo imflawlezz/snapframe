@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release tag
+        run: ./Scripts/validate-release-tag.sh "${GITHUB_REF_NAME}"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project snapframe.xcodeproj \
+            -scheme snapframe \
+            -destination 'platform=macOS' \
+            -quiet
+
+      - name: Build universal Release app
+        run: ./Scripts/build-release.sh
+
+      - name: Create DMG
+        run: ./Scripts/make-dmg.sh
+
+      - name: Prepare release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 Scripts/extract-release-notes.py "$VERSION" > release-notes.md
+          echo "---"
+          cat release-notes.md
+
+      - name: Upload draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: dist/Snapframe_*.dmg
+          fail_on_unmatched_files: true

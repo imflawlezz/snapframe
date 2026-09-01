@@ -62,10 +62,6 @@ dist/
 *.xccoverage
 coverage/
 
-# Release / DMG tooling (local only)
-Scripts/
-Packaging/
-
 # Agent / local scratch
 .cursor/
 tmp/

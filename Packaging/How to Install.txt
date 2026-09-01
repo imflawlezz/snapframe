@@ -1,0 +1,19 @@
+Snapframe — how to install
+==========================
+
+1. Drag Snapframe.app into Applications
+2. Double-click Quarantine.command
+   (if macOS blocks it: right-click → Open → Open)
+3. Open Snapframe from Applications
+
+Why Quarantine.command?
+-----------------------
+Downloaded apps are marked with quarantine. Without clearing it,
+macOS may refuse to open Snapframe (or show repeated Gatekeeper prompts).
+
+Manual command (optional)
+-------------------------
+  xattr -dr com.apple.quarantine /Applications/Snapframe.app
+  open /Applications/Snapframe.app
+
+Alternatively: right-click Snapframe.app → Open → Open.
