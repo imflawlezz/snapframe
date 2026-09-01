@@ -35,6 +35,7 @@ final class SaveCropUseCaseTests: XCTestCase {
                 videoSize: CGSize(width: 200, height: 100),
                 frame: frame,
                 pts: 1.25,
+                fps: 24,
                 format: .png,
                 jpegQuality: 0.9,
                 markCueDone: false,
@@ -66,6 +67,7 @@ final class SaveCropUseCaseTests: XCTestCase {
                 videoSize: CGSize(width: 100, height: 100),
                 frame: frame,
                 pts: 1.05,
+                fps: 24,
                 format: .jpeg,
                 jpegQuality: 0.8,
                 markCueDone: true,
@@ -141,6 +143,7 @@ final class SaveCropUseCaseTests: XCTestCase {
             videoSize: videoSize,
             frame: (try? makeCGImage(width: 100, height: 100))!,
             pts: 0,
+            fps: 24,
             format: .png,
             jpegQuality: 0.9,
             markCueDone: false,
@@ -241,6 +244,12 @@ private final class FakeCueRepository: CueRepository {
     func nearest(to seconds: Double, maxDelta: Double) -> Cue? {
         cues.min { abs($0.t - seconds) < abs($1.t - seconds) }
             .flatMap { abs($0.t - seconds) <= maxDelta ? $0 : nil }
+    }
+
+    func cue(onSameFrameAs seconds: Double, fps: Double) -> Cue? {
+        guard fps > 0 else { return nil }
+        let frame = Timecode.frameIndex(at: seconds, fps: fps)
+        return cues.first { Timecode.frameIndex(at: $0.t, fps: fps) == frame }
     }
 
     func nextPending(after id: String?) -> Cue? {

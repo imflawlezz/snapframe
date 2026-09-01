@@ -127,8 +127,8 @@ struct HotkeyCatcher: NSViewRepresentable {
 
             switch event.keyCode {
             case KeyCode.escape:
-                if state.cropScissorsMode {
-                    state.cropScissorsMode = false
+                if state.cropScissorsMode || state.cropScissorsChromeVisible {
+                    state.dismissCropScissors()
                 } else if state.videoURL != nil {
                     state.closeVideo()
                 } else {

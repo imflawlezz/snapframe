@@ -16,15 +16,28 @@ final class NativeVideoPlayer {
     private(set) var volume: Double = 100
     private(set) var speed: Double = 1
     private(set) var lastError: String?
+    private(set) var isSyncingFrame = false
 
     private(set) var capturedCGImage: CGImage?
     private(set) var capturedPTS: Double?
+    private(set) var displayFrame: Int = 0
 
     let avPlayer = AVPlayer()
 
     var fps: Double { fpsValue > 0 ? fpsValue : 30 }
-    var currentFrame: Int { Timecode.frameIndex(at: position, fps: fps) }
+    var currentFrame: Int {
+        if isPaused, frameImage != nil { return displayFrame }
+        return Timecode.frameIndex(at: position, fps: fps)
+    }
     var totalFrames: Int { duration > 0 ? Timecode.frameIndex(at: duration, fps: fps) : 0 }
+
+    var exactFrameSeconds: Double {
+        Timecode.seconds(forFrame: currentFrame, fps: fps)
+    }
+
+    var savedFrameSeconds: Double {
+        Timecode.seconds(forFrame: displayFrame, fps: fps)
+    }
 
     var videoCodec: String? { videoCodecName }
 
@@ -32,6 +45,8 @@ final class NativeVideoPlayer {
     private var imageGenerator: AVAssetImageGenerator?
     private var timeObserver: Any?
     private var openToken: UInt64 = 0
+    private var syncToken: UInt64 = 0
+    private var preciseSeekTask: Task<Bool, Never>?
     private var fpsValue: Double = 30
     private var videoCodecName: String?
     private var endObserver: NSObjectProtocol?
@@ -50,9 +65,11 @@ final class NativeVideoPlayer {
         let token = openToken
         lastError = nil
         isPaused = true
+        isSyncingFrame = false
         frameImage = nil
         capturedCGImage = nil
         capturedPTS = nil
+        displayFrame = 0
         position = 0
         duration = 0
         videoSize = .zero
@@ -93,6 +110,10 @@ final class NativeVideoPlayer {
 
     func closeMedia() {
         openToken &+= 1
+        syncToken &+= 1
+        preciseSeekTask?.cancel()
+        preciseSeekTask = nil
+        isSyncingFrame = false
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
@@ -104,6 +125,7 @@ final class NativeVideoPlayer {
         frameImage = nil
         capturedCGImage = nil
         capturedPTS = nil
+        displayFrame = 0
         position = 0
         duration = 0
         videoSize = .zero
@@ -156,48 +178,77 @@ final class NativeVideoPlayer {
 
     func seek(seconds: Double, precise: Bool) {
         guard avPlayer.currentItem != nil else { return }
+        if precise {
+            Task { await seekPrecise(to: seconds) }
+            return
+        }
+
         let t = clampedTime(seconds)
         position = t
-
         let time = CMTime(seconds: t, preferredTimescale: 60_000)
         let frameDur = 1 / max(fps, 24)
-        let slack = precise ? frameDur * 0.25 : frameDur * 2
-        let tol = CMTime(seconds: slack, preferredTimescale: 60_000)
+        let tol = CMTime(seconds: frameDur * 2, preferredTimescale: 60_000)
         avPlayer.currentItem?.cancelPendingSeeks()
         avPlayer.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
     }
 
-    @discardableResult
-    func captureExactFrame() -> Bool {
-        captureFrame(at: position, updatePreview: false)
+    func waitForSeekIdle() async {
+        if let task = preciseSeekTask {
+            _ = await task.value
+        }
     }
 
     @discardableResult
-    func refreshFrame() -> Bool {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            _ = self.captureFrame(at: self.position, updatePreview: false)
+    func seekPrecise(to seconds: Double) async -> Bool {
+        guard avPlayer.currentItem != nil else {
+            lastError = "No video loaded"
+            return false
         }
-        return true
+
+        syncToken &+= 1
+        let token = syncToken
+
+        let task = Task { @MainActor in
+            await self.runPreciseSeek(to: seconds, token: token)
+        }
+        preciseSeekTask = task
+        return await task.value
+    }
+
+    @discardableResult
+    func syncExactFrame(at seconds: Double? = nil) async -> Bool {
+        await seekPrecise(to: seconds ?? position)
+    }
+
+    @discardableResult
+    func captureExactFrame() async -> Bool {
+        await waitForSeekIdle()
+        guard avPlayer.currentItem != nil else {
+            lastError = "No video loaded"
+            return false
+        }
+        let frame = activeFrameIndex()
+        return await seekPrecise(to: Timecode.seconds(forFrame: frame, fps: fps))
+    }
+
+    @discardableResult
+    func refreshFrame() async -> Bool {
+        await captureExactFrame()
+    }
+
+    private func activeFrameIndex() -> Int {
+        if isPaused, frameImage != nil { return displayFrame }
+        return Timecode.frameIndex(at: position, fps: fps)
     }
 
     func frameStep(_ n: Int) {
-        guard n != 0, let item = avPlayer.currentItem else { return }
+        guard n != 0 else { return }
         pause(true)
+        setScrubMode(false)
 
         let maxFrame = max(0, totalFrames - 1)
         let targetFrame = max(0, min(maxFrame, currentFrame + n))
         let target = Timecode.seconds(forFrame: targetFrame, fps: fps)
-        position = target
-
-        if n > 0, item.canStepForward {
-            item.step(byCount: n)
-            return
-        }
-        if n < 0, item.canStepBackward {
-            item.step(byCount: n)
-            return
-        }
         seek(seconds: target, precise: true)
     }
 
@@ -276,10 +327,7 @@ final class NativeVideoPlayer {
 
             observeEnd(of: item)
 
-            if let preview = await snapshotImage(at: 0) {
-                guard token == openToken else { return }
-                frameImage = preview
-            }
+            _ = await seekPrecise(to: 0)
         } catch {
             guard token == openToken else { return }
             lastError = error.localizedDescription
@@ -293,6 +341,48 @@ final class NativeVideoPlayer {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
         return generator
+    }
+
+    private func runPreciseSeek(to seconds: Double, token: UInt64) async -> Bool {
+        isSyncingFrame = true
+        defer {
+            if token == syncToken {
+                isSyncingFrame = false
+            }
+        }
+
+        let target = clampedTime(seconds)
+
+        let time = CMTime(seconds: target, preferredTimescale: 60_000)
+        let finished = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            avPlayer.currentItem?.cancelPendingSeeks()
+            avPlayer.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { ok in
+                continuation.resume(returning: ok)
+            }
+        }
+
+        guard token == syncToken, finished, !Task.isCancelled else { return false }
+        let frame = Timecode.frameIndex(at: target, fps: fps)
+        return applyExactFrame(frame: frame, updatePreview: true, token: token)
+    }
+
+    @discardableResult
+    private func applyExactFrame(frame: Int, updatePreview: Bool, token: UInt64) -> Bool {
+        guard token == syncToken else { return false }
+
+        let maxFrame = totalFrames > 0 ? max(0, totalFrames - 1) : frame
+        let clampedFrame = min(max(0, frame), maxFrame)
+        let pinned = Timecode.seconds(forFrame: clampedFrame, fps: fps)
+
+        guard captureFrame(at: pinned, updatePreview: updatePreview) else { return false }
+
+        displayFrame = clampedFrame
+        position = pinned
+        capturedPTS = pinned
+
+        let time = CMTime(seconds: pinned, preferredTimescale: 60_000)
+        avPlayer.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { _ in }
+        return true
     }
 
     @discardableResult
@@ -365,19 +455,6 @@ final class NativeVideoPlayer {
         guard avPlayer.currentItem != nil else { return }
         let target = Float(rate)
         avPlayer.playImmediately(atRate: target)
-    }
-
-    private func syncPositionFromPlayer() {
-        let t = avPlayer.currentTime()
-        guard t.isValid, !t.isIndefinite else { return }
-        var secs = max(0, t.seconds)
-        if fps > 0 {
-            secs = Timecode.snapped(seconds: secs, fps: fps, duration: duration)
-        }
-        if isPaused, abs(secs - position) < (0.5 / max(fps, 1)) {
-            return
-        }
-        position = secs
     }
 
     private func observeEnd(of item: AVPlayerItem) {

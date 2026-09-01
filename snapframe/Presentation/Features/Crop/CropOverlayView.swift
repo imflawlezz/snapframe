@@ -113,10 +113,6 @@ final class CropCanvasView: NSView {
     private let minCrop = 16
     private var scrollCommitWork: DispatchWorkItem?
     private var dimAlpha: CGFloat = 0.48
-    private var layoutAnimating = false
-    private var presentedLetter = CGRect.zero
-    private var presentedCrop = CGRect.zero
-    private var layoutTimer: Timer?
     private var scissorsLive = false
     private var preDragCrop = CropRect.default
     private var scissorsHoverView: CGPoint?
@@ -130,19 +126,17 @@ final class CropCanvasView: NSView {
 
     override func resize(withOldSuperviewSize oldSize: NSSize) {
         super.resize(withOldSuperviewSize: oldSize)
-        animateLayoutIfNeeded()
+        needsDisplay = true
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        animateLayoutIfNeeded()
+        needsDisplay = true
     }
 
     override func layout() {
         super.layout()
-        if !layoutAnimating {
-            needsDisplay = true
-        }
+        needsDisplay = true
     }
 
     override func viewDidMoveToWindow() {
@@ -155,9 +149,6 @@ final class CropCanvasView: NSView {
 
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
-        if superview == nil {
-            layoutTimer?.invalidate()
-        }
     }
 
     override func updateTrackingAreas() {
@@ -172,15 +163,9 @@ final class CropCanvasView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard videoSize.width > 0, videoSize.height > 0 else { return }
-        let letterTarget = letterbox(in: bounds.size)
-        let scale = letterTarget.width / videoSize.width
-        let cropTarget = viewRect(letter: letterTarget, scale: scale)
-        let letter = layoutAnimating ? presentedLetter : letterTarget
-        let r = layoutAnimating ? presentedCrop : cropTarget
-        if !layoutAnimating {
-            presentedLetter = letterTarget
-            presentedCrop = cropTarget
-        }
+        let letter = letterbox(in: bounds.size)
+        let scale = letter.width / videoSize.width
+        let r = viewRect(letter: letter, scale: scale)
 
         if scissorsMode && !scissorsLive {
             drawScissorsHoverBadge()
@@ -512,59 +497,6 @@ final class CropCanvasView: NSView {
     override func mouseMoved(with event: NSEvent) {
         guard scissorsMode else { return }
         updateScissorsHover(with: event)
-    }
-
-    // MARK: - Layout animation
-
-    private func animateLayoutIfNeeded() {
-        guard videoSize.width > 0, window != nil, !isInteracting else {
-            needsDisplay = true
-            return
-        }
-        let letter = letterbox(in: bounds.size)
-        let scale = letter.width / max(videoSize.width, 1)
-        let cropRect = viewRect(letter: letter, scale: scale)
-        if presentedLetter == .zero {
-            presentedLetter = letter
-            presentedCrop = cropRect
-            needsDisplay = true
-            return
-        }
-        if hypot(letter.midX - presentedLetter.midX, letter.midY - presentedLetter.midY) < 0.5,
-           abs(letter.width - presentedLetter.width) < 0.5 {
-            needsDisplay = true
-            return
-        }
-        let fromLetter = presentedLetter
-        let fromCrop = presentedCrop
-        layoutTimer?.invalidate()
-        layoutAnimating = true
-        let start = Date()
-        let duration: TimeInterval = 0.12
-        layoutTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
-            let p = min(1, Date().timeIntervalSince(start) / duration)
-            let e = 1 - pow(1 - p, 3)
-            self.presentedLetter = Self.lerp(fromLetter, letter, e)
-            self.presentedCrop = Self.lerp(fromCrop, cropRect, e)
-            self.needsDisplay = true
-            if p >= 1 {
-                timer.invalidate()
-                self.layoutAnimating = false
-                self.presentedLetter = letter
-                self.presentedCrop = cropRect
-            }
-        }
-        RunLoop.main.add(layoutTimer!, forMode: .common)
-    }
-
-    private static func lerp(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
-        CGRect(
-            x: a.origin.x + (b.origin.x - a.origin.x) * t,
-            y: a.origin.y + (b.origin.y - a.origin.y) * t,
-            width: a.width + (b.width - a.width) * t,
-            height: a.height + (b.height - a.height) * t
-        )
     }
 
     // MARK: - Geometry

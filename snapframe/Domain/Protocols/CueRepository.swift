@@ -17,5 +17,6 @@ protocol CueRepository: AnyObject {
     func updateTime(_ id: String, seconds: Double) throws
     func remove(_ id: String) throws
     func nearest(to seconds: Double, maxDelta: Double) -> Cue?
+    func cue(onSameFrameAs seconds: Double, fps: Double) -> Cue?
     func nextPending(after id: String?) -> Cue?
 }

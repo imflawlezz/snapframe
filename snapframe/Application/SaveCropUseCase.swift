@@ -6,6 +6,7 @@ struct SaveCropRequest {
     var videoSize: CGSize
     var frame: CGImage
     var pts: Double
+    var fps: Double
     var format: ExportImageFormat
     var jpegQuality: Double
     var markCueDone: Bool
@@ -90,7 +91,8 @@ enum SaveCropUseCase {
         var marked: Cue?
         var nextID: String?
         if request.markCueDone, let cues {
-            let target = cues.nearest(to: request.pts, maxDelta: request.cueMatchWindow)
+            let target = cues.cue(onSameFrameAs: request.pts, fps: request.fps)
+                ?? cues.nearest(to: request.pts, maxDelta: request.cueMatchWindow)
             if let t = target, !t.done {
                 try cues.markDone(t.id)
                 marked = t

@@ -245,6 +245,8 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .animation(SnapMotion.inspector, value: state.inspectorVisible)
+            .animation(nil, value: liveInspectorWidth)
             .zIndex(0)
             .clipped()
             .transaction { transaction in
@@ -349,9 +351,7 @@ struct ContentView: View {
                         kind: state.inspectorVisible ? .accent : .normal,
                         tooltip: "Toggle inspector", shortcut: "⌘\\"
                     ) {
-                        withAnimation(SnapMotion.inspector) {
-                            state.inspectorVisible.toggle()
-                        }
+                        state.inspectorVisible.toggle()
                     }
                 }
 
@@ -406,7 +406,7 @@ struct ContentView: View {
             )
             .background(SnapTheme.panel.opacity(0.5))
         }
-        .animation(SnapMotion.fast, value: state.cropOverlayVisible)
+        .animation(SnapMotion.cropBar, value: state.cropOverlayVisible)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minWidth: WorkspaceLayout.mainMinWidth)
     }

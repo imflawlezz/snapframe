@@ -19,6 +19,8 @@ final class AppState {
     var inspectorVisible = true
     var cropOverlayVisible = false
     var cropScissorsMode = false
+    var cropFrameChromeVisible = false
+    var cropScissorsChromeVisible = false
     var cropSquareLocked = false
     var cropRatioLocked = false
     var cropLockedRatioW = 16
@@ -46,6 +48,7 @@ final class AppState {
     private var pinnedCropIndex: Int?
 
     private var loadTask: Task<Void, Never>?
+    private var cropTransitionTask: Task<Void, Never>?
     private var didCenterCrop = false
 
     static let supportedFormats = ["MP4", "MOV", "M4V"]
@@ -143,9 +146,11 @@ final class AppState {
 
     func refreshPreview() {
         guard videoURL != nil, !isLoadingVideo else { return }
-        _ = player.refreshFrame()
-        syncSeekInputFromPlayer()
-        status = "Preview refreshed"
+        Task {
+            guard await player.refreshFrame() else { return }
+            syncSeekInputFromPlayer()
+            status = "Preview refreshed"
+        }
     }
 
     func openVideo() {
@@ -164,7 +169,10 @@ final class AppState {
         cropStore = nil
         cueStore = nil
         crop = .default
+        cancelCropTransition()
         cropScissorsMode = false
+        cropFrameChromeVisible = false
+        cropScissorsChromeVisible = false
         seekInput = ""
         pinnedCueID = nil
         pinnedCropIndex = nil
@@ -232,7 +240,7 @@ final class AppState {
             }
 
             ensureCenteredCrop()
-            _ = player.refreshFrame()
+            _ = await player.refreshFrame()
 
             if openingFresh {
                 isLoadingVideo = false
@@ -243,6 +251,7 @@ final class AppState {
             }
             loadProgressMessage = ""
             syncSeekInputFromPlayer()
+            restoreCropChromeIfNeeded()
 
             let thumbURL = url
             let jumpToPending = cueStore?.pending.isEmpty == false
@@ -313,20 +322,78 @@ final class AppState {
     }
 
     func toggleCropOverlay() {
+        cancelCropTransition()
         if cropOverlayVisible {
+            cropFrameChromeVisible = false
             cropOverlayVisible = false
         } else {
-            cropOverlayVisible = true
+            cropScissorsChromeVisible = false
             cropScissorsMode = false
+            cropFrameChromeVisible = false
+            cropOverlayVisible = true
+            scheduleFrameChrome(afterToolbar: true)
         }
     }
 
     func toggleCropScissors() {
-        if cropScissorsMode {
+        cancelCropTransition()
+        if cropScissorsMode || cropScissorsChromeVisible {
+            cropScissorsChromeVisible = false
             cropScissorsMode = false
         } else {
+            cropFrameChromeVisible = false
+            if cropOverlayVisible {
+                cropOverlayVisible = false
+                scheduleScissorsChrome(afterToolbarHide: true)
+            } else {
+                scheduleScissorsChrome(afterToolbarHide: false)
+            }
+        }
+    }
+
+    func dismissCropScissors() {
+        cancelCropTransition()
+        cropScissorsChromeVisible = false
+        cropScissorsMode = false
+    }
+
+    private func cancelCropTransition() {
+        cropTransitionTask?.cancel()
+        cropTransitionTask = nil
+    }
+
+    private func scheduleFrameChrome(afterToolbar: Bool) {
+        guard afterToolbar else {
+            cropFrameChromeVisible = true
+            return
+        }
+        cropTransitionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: SnapMotion.cropBarDelayNs)
+            guard !Task.isCancelled else { return }
+            cropFrameChromeVisible = true
+        }
+    }
+
+    private func scheduleScissorsChrome(afterToolbarHide: Bool) {
+        guard afterToolbarHide else {
             cropScissorsMode = true
-            cropOverlayVisible = false
+            cropScissorsChromeVisible = true
+            return
+        }
+        cropTransitionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: SnapMotion.cropBarDelayNs)
+            guard !Task.isCancelled else { return }
+            cropScissorsMode = true
+            cropScissorsChromeVisible = true
+        }
+    }
+
+    private func restoreCropChromeIfNeeded() {
+        cancelCropTransition()
+        if cropOverlayVisible {
+            scheduleFrameChrome(afterToolbar: false)
+        } else if cropScissorsMode {
+            scheduleScissorsChrome(afterToolbarHide: false)
         }
     }
 
@@ -366,19 +433,26 @@ final class AppState {
             return
         }
         cueStore.bindFileURL(FileAccess.sidecarCuesURL(for: videoURL))
-        let t = player.position
-        let frameWindow = player.fps > 0 ? (1 / player.fps) : 0.04
-        if let near = cueStore.nearest(to: t, maxDelta: frameWindow) {
-            pinnedCueID = near.id
-            status = "Cue already here"
-            return
-        }
-        do {
-            let cue = try cueStore.add(at: t)
-            pinnedCueID = cue.id
-            status = "Cue \(displayTime(cue.t))"
-        } catch {
-            errorMessage = error.localizedDescription
+        Task {
+            await player.waitForSeekIdle()
+            guard await player.captureExactFrame() else {
+                errorMessage = player.lastError ?? "No frame captured yet."
+                return
+            }
+            let t = player.savedFrameSeconds
+            let frameWindow = player.fps > 0 ? (1 / player.fps) : 0.04
+            if let near = cueStore.nearest(to: t, maxDelta: frameWindow) {
+                pinnedCueID = near.id
+                status = "Cue already here"
+                return
+            }
+            do {
+                let cue = try cueStore.add(at: t)
+                pinnedCueID = cue.id
+                status = "Cue \(displayTime(cue.t))"
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -429,7 +503,10 @@ final class AppState {
 
     func frameStep(_ n: Int) {
         player.frameStep(n)
-        syncSeekInputFromPlayer()
+        Task {
+            await player.waitForSeekIdle()
+            syncSeekInputFromPlayer()
+        }
     }
 
     func seekStep(seconds delta: Double) {
@@ -459,9 +536,11 @@ final class AppState {
         pinnedCueID = id
         player.pause(true)
         player.setScrubMode(false)
-        player.seek(seconds: cue.t, precise: true)
-        syncSeekInputFromPlayer()
-        status = cue.label.isEmpty ? displayTime(cue.t) : "\(displayTime(cue.t)) — \(cue.label)"
+        Task {
+            guard await player.seekPrecise(to: cue.t) else { return }
+            syncSeekInputFromPlayer()
+            status = cue.label.isEmpty ? displayTime(cue.t) : "\(displayTime(cue.t)) — \(cue.label)"
+        }
     }
 
     func nextCue() {
@@ -554,10 +633,12 @@ final class AppState {
         pinnedCropIndex = index
         player.pause(true)
         player.setScrubMode(false)
-        player.seek(seconds: entry.timecodeSeconds, precise: true)
-        crop = CropRect(x: entry.x, y: entry.y, width: entry.width, height: entry.height)
-        syncCropFieldsFromRect()
-        syncSeekInputFromPlayer()
+        Task {
+            guard await player.seekPrecise(to: entry.timecodeSeconds) else { return }
+            crop = CropRect(x: entry.x, y: entry.y, width: entry.width, height: entry.height)
+            syncCropFieldsFromRect()
+            syncSeekInputFromPlayer()
+        }
     }
 
     func revealCrop(at index: Int) {
@@ -614,42 +695,48 @@ final class AppState {
 
         player.pause(true)
         player.setScrubMode(false)
-        guard player.captureExactFrame(), let cg = player.capturedCGImage else {
-            errorMessage = player.lastError ?? "No frame captured yet."
-            return
-        }
 
-        let prefs = UserPreferences.shared
-        do {
-            let result = try SaveCropUseCase.execute(
-                request: SaveCropRequest(
-                    crop: crop,
-                    videoSize: player.videoSize,
-                    frame: cg,
-                    pts: player.capturedPTS ?? player.position,
-                    format: prefs.exportFormat,
-                    jpegQuality: prefs.jpegQuality,
-                    markCueDone: prefs.markCueDoneOnSave,
-                    advanceAfterSave: prefs.advanceToNextCueAfterSave,
-                    cueMatchWindow: frameMatchWindow
-                ),
-                crops: cropStore,
-                cues: cueStore,
-                imageEncoder: FrameImageEncoder()
-            )
-            cropsRevision &+= 1
-            pinnedCropIndex = cropStore.entries.indices.last
-
-            if let marked = result.markedCue {
-                status = "Saved \(result.filename) · cue \(displayTime(marked.t)) done"
-                if let nextID = result.nextCueID {
-                    DispatchQueue.main.async { [weak self] in self?.gotoCue(nextID) }
-                }
-            } else {
-                status = "Saved \(result.filename) @ \(displayTime(result.entry.timecodeSeconds))"
+        Task {
+            await player.waitForSeekIdle()
+            guard await player.captureExactFrame(), let cg = player.capturedCGImage else {
+                errorMessage = player.lastError ?? "No frame captured yet."
+                return
             }
-        } catch {
-            errorMessage = error.localizedDescription
+
+            let prefs = UserPreferences.shared
+            let pts = player.savedFrameSeconds
+            do {
+                let result = try SaveCropUseCase.execute(
+                    request: SaveCropRequest(
+                        crop: crop,
+                        videoSize: player.videoSize,
+                        frame: cg,
+                        pts: pts,
+                        fps: player.fps,
+                        format: prefs.exportFormat,
+                        jpegQuality: prefs.jpegQuality,
+                        markCueDone: prefs.markCueDoneOnSave,
+                        advanceAfterSave: prefs.advanceToNextCueAfterSave,
+                        cueMatchWindow: frameMatchWindow
+                    ),
+                    crops: cropStore,
+                    cues: cueStore,
+                    imageEncoder: FrameImageEncoder()
+                )
+                cropsRevision &+= 1
+                pinnedCropIndex = cropStore.entries.indices.last
+
+                if let marked = result.markedCue {
+                    status = "Saved \(result.filename) · cue \(displayTime(marked.t)) done"
+                    if let nextID = result.nextCueID {
+                        gotoCue(nextID)
+                    }
+                } else {
+                    status = "Saved \(result.filename) @ \(displayTime(result.entry.timecodeSeconds))"
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -659,7 +746,10 @@ final class AppState {
             player.setScrubMode(false)
             player.pause(true)
             player.seek(seconds: t, precise: true)
-            syncSeekInputFromPlayer()
+            Task {
+                await player.waitForSeekIdle()
+                syncSeekInputFromPlayer()
+            }
         } else {
             if !player.isPaused {
                 player.pause(true)
@@ -673,12 +763,18 @@ final class AppState {
         player.pause(true)
         player.setScrubMode(false)
         player.seek(seconds: seconds, precise: precise)
-        syncSeekInputFromPlayer()
+        if precise {
+            Task {
+                await player.waitForSeekIdle()
+                syncSeekInputFromPlayer()
+            }
+        } else {
+            syncSeekInputFromPlayer()
+        }
     }
 
     private func isAtPlayhead(_ seconds: Double) -> Bool {
-        Timecode.frameIndex(at: seconds, fps: player.fps)
-            == Timecode.frameIndex(at: player.position, fps: player.fps)
+        Timecode.frameIndex(at: seconds, fps: player.fps) == player.currentFrame
     }
 
     private var frameMatchWindow: Double {

@@ -156,6 +156,12 @@ final class CueStore: CueRepository {
         return best
     }
 
+    func cue(onSameFrameAs seconds: Double, fps: Double) -> Cue? {
+        guard fps > 0 else { return nil }
+        let frame = Timecode.frameIndex(at: seconds, fps: fps)
+        return cues.first { Timecode.frameIndex(at: $0.t, fps: fps) == frame }
+    }
+
     func nextPending(after id: String?) -> Cue? {
         let pend = pending
         guard !pend.isEmpty else { return nil }
