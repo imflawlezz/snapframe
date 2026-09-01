@@ -10,9 +10,12 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
 
       - name: Validate release tag
         run: ./Scripts/validate-release-tag.sh "${GITHUB_REF_NAME}"
@@ -45,5 +48,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: release-notes.md
-          files: dist/Snapframe_*.dmg
+          files: |
+            dist/Snapframe_*.dmg
+            dist/checksums.txt
           fail_on_unmatched_files: true

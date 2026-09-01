@@ -61,6 +61,9 @@ UNIVERSAL_BIN="$APP_DST/Contents/MacOS/Snapframe"
 lipo -create -output "$UNIVERSAL_BIN" "$ARM_BIN" "$X86_BIN"
 chmod +x "$UNIVERSAL_BIN"
 
+ICNS="$APP_DST/Contents/Resources/Snapframe.icns"
+[[ -f "$ICNS" ]] || die "missing app icon at $ICNS (Icon Composer .icon requires Xcode 26+)"
+
 IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/{print $2; exit}')"
 if [[ -n "${CI:-}" ]]; then
   codesign --force --deep --sign - "$APP_DST"

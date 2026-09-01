@@ -77,9 +77,16 @@ echo "Creating styled DMG with dmgbuild …"
 
 xattr -dr com.apple.quarantine "$DMG_PATH" 2>/dev/null || true
 
+CHECKSUMS="$DIST/checksums.txt"
+{
+  printf '# Snapframe %s SHA-256 checksums\n\n' "$VERSION"
+  shasum -a 256 "$DMG_PATH" | awk -v f="$DMG_NAME" '{printf "%s  %s\n", $1, f}'
+} > "$CHECKSUMS"
+
 SIZE="$(du -h "$DMG_PATH" | awk '{print $1}')"
 echo
 echo "Built: $DMG_PATH ($SIZE)"
+echo "Checksums: $CHECKSUMS"
 echo "Version: $VERSION ($BUILD)"
 echo "Visible: Snapframe.app · Applications · Quarantine.command"
 echo "Open with: open \"$DMG_PATH\""
