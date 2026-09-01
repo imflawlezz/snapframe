@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 enum SnapTheme {
     static var ink: Color          { AppTheme.shared.ink }
     static var inkSecondary: Color { AppTheme.shared.inkSecondary }
