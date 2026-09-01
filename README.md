@@ -7,7 +7,7 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 | | |
 |---|---|
 | **Platform** | macOS 14+ |
-| **Version** | 1.5.0 |
+| **Version** | 1.6.0 |
 | **License** | [MIT](LICENSE) |
 | **Playback** | AVFoundation |
 
@@ -15,7 +15,7 @@ Open a video, jump between marked moments, frame a crop or cut with scissors, an
 
 ## Install
 
-1. Open `Snapframe_1.5.0.dmg`.
+1. Open `Snapframe_1.6.0.dmg`.
 2. Drag **Snapframe.app** into **Applications**.
 3. Double-click **Quarantine.command** in the DMG.  
    If macOS blocks it: right-click → **Open** → **Open**.
@@ -41,6 +41,7 @@ Or right-click the app → **Open**.
 - **Scissors crop**: drag to save on release (hold **Shift** for square); hover shows center-offset coordinates
 - Crop bar: size, center offset, locks, ratio readout
 - Export crops as PNG or JPEG into a `{name}_crops/` folder
+- Sidecar sync: **Refresh** reloads cues and crops from disk; changes are picked up automatically when you return to the app
 - Timeline with pan, zoom, follow playhead, markers, and a fixed time/frame grid
 - Transport: playback, frame skip, time skip (−5s…+5s), speed, go to start
 - Recents with thumbnails
@@ -57,8 +58,9 @@ Or right-click the app → **Open**.
 3. Scrub the timeline; step frames with ← / → (⇧ for ±10). Click the scrollbar track to jump the viewport. **Return** jumps to the start.
 4. **Frame crop** (**C**) shows the overlay and crop bar. Place and size the crop, then **Save crop** (**⌘S**).
    Scroll adjusts height; **⇧scroll** adjusts width. **Aspect lock** (**L**) keeps the current ratio; **Square** (**R**) forces 1:1.
-   **Scissors crop** (**X**) is an alternative: the viewer stays clean until you drag. Press, drag to the opposite corner, release — the crop saves immediately. Hold **Shift** while dragging for a square. Hover shows center-offset frame coordinates (`+x, +y`). **Esc** exits scissors. Frame crop and scissors are mutually exclusive.
+   **Scissors crop** (**X**) is an alternative: the viewer stays clean until you drag. Press, drag to the opposite corner, release — the crop saves immediately. Hold **Shift** while dragging for a square. Hover shows center-offset frame coordinates (`+x, +y`). **Esc** exits scissors. Frame crop and scissors are mutually exclusive; aspect lock and square apply to frame crop only.
 5. Find exports in `Movie_crops/` next to the source, with `metadata.json`.
+6. After editing sidecars in Finder or another app, use **Refresh** (**⌘R**) or switch back to Snapframe to reload cues and crops.
 
 ### Supported formats
 
@@ -115,8 +117,8 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 | ⇧⌫ | Delete active crop |
 | C | Frame crop |
 | X | Scissors crop |
-| L | Aspect lock |
-| R | Square proportions |
+| L | Aspect lock (frame crop) |
+| R | Square proportions (frame crop) |
 | P | Follow playhead |
 | S | Snap to cues |
 | G | Go to timecode |
@@ -125,7 +127,7 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 | ⌘O | Open video |
 | ⌘I | Import cues |
 | ⌘S | Save crop |
-| ⌘R | Refresh preview |
+| ⌘R | Refresh (preview + reload sidecars) |
 | ⌘\\ | Toggle inspector |
 | ⌘, | Preferences |
 | Snapframe → Check for Updates… | Compare with latest GitHub release |
@@ -134,7 +136,7 @@ Shortcuts use physical key positions (US QWERTY), so they work the same on any i
 
 ## Build from source
 
-Requires **Xcode** on **macOS 14+**.
+Requires **Xcode** on **macOS 14+**. Release builds use the Icon Composer app icon (`.icon`); **Xcode 26+** is required for a correct icon in the built app.
 
 ```bash
 open snapframe.xcodeproj
@@ -175,7 +177,9 @@ Or build and package in one step:
 ./Scripts/make-dmg.sh --build
 ```
 
-Pushing a `v*` tag triggers the GitHub Actions release workflow: tests, universal build, DMG upload, and a draft GitHub release.
+`make-dmg.sh` also writes `dist/checksums.txt` (SHA-256 of the DMG).
+
+Pushing a `v*` tag triggers the GitHub Actions release workflow on **macos-26** (Xcode 26.3): tests, universal build, DMG, `checksums.txt`, and a draft GitHub release.
 
 ### Architecture
 

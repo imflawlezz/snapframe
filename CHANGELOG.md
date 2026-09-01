@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Refresh** (**⌘R**) reloads cue and crop sidecars from disk; crop entries whose image files were deleted are removed from the inspector and `metadata.json`
+- Returning to Snapframe reloads changed sidecars automatically (cue file edits; crop metadata or `{stem}_crops/` folder changes)
+
+### Changed
+
+- **Refresh Preview** renamed to **Refresh**
+
+### Fixed
+
+- **Scissors crop** (**X**) no longer inherits **Frame crop** aspect lock (**L**) or square (**R**); hold **Shift** while dragging for a square scissors crop
+
 ## [1.5.0] — 2026-09-01
 
 ### Changed
