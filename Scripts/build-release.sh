@@ -32,6 +32,11 @@ build_slice() {
     ARCHS="$arch" \
     ONLY_ACTIVE_ARCH=YES \
     EXCLUDED_ARCHS="" \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY=- \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=YES \
+    DEVELOPMENT_TEAM= \
     build
 
   local built="$slice_derived/Build/Products/Release/Snapframe.app"
