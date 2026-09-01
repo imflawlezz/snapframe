@@ -43,6 +43,36 @@ final class CropStore: CropRepository {
         entries = file.crops
     }
 
+    @discardableResult
+    func reconcileMissingFiles() throws -> Int {
+        guard !entries.isEmpty else { return 0 }
+        let fm = FileManager.default
+        let valid = entries.filter {
+            fm.fileExists(atPath: cropsFolder.appendingPathComponent($0.file).path)
+        }
+        let removed = entries.count - valid.count
+        guard removed > 0 else { return 0 }
+        entries = valid
+        try save()
+        return removed
+    }
+
+    @discardableResult
+    func reloadFromDisk() throws -> Int {
+        let removedByClear: Int
+        if let data = try? Data(contentsOf: metaURL),
+           let file = try? JSONDecoder().decode(CropMetadataFile.self, from: data) {
+            entries = file.crops
+            removedByClear = 0
+        } else {
+            removedByClear = entries.count
+            entries = []
+            guard removedByClear == 0 else { return removedByClear }
+            return 0
+        }
+        return removedByClear + (try reconcileMissingFiles())
+    }
+
     func ensureFolder() throws {
         try FileManager.default.createDirectory(at: cropsFolder, withIntermediateDirectories: true)
     }

@@ -5,9 +5,14 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openVideo: ((URL) -> Void)?
     var onQuit: (() -> Void)?
+    var onBecomeActive: (() -> Void)?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        onBecomeActive?()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

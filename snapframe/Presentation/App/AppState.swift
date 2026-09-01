@@ -50,6 +50,12 @@ final class AppState {
     private var loadTask: Task<Void, Never>?
     private var cropTransitionTask: Task<Void, Never>?
     private var didCenterCrop = false
+    private var trackedCuesModDate: Date?
+    private var trackedCropMetaModDate: Date?
+    private var trackedCropsFolderModDate: Date?
+    private var hadTrackedCuesFile = false
+    private var hadTrackedCropMeta = false
+    private var hadTrackedCropsFolder = false
 
     static let supportedFormats = ["MP4", "MOV", "M4V"]
 
@@ -146,11 +152,18 @@ final class AppState {
 
     func refreshPreview() {
         guard videoURL != nil, !isLoadingVideo else { return }
+        reloadSidecarsFromDisk()
         Task {
             guard await player.refreshFrame() else { return }
             syncSeekInputFromPlayer()
             status = "Preview refreshed"
         }
+    }
+
+    func syncSidecarsIfChanged() {
+        guard let videoURL, !isLoadingVideo else { return }
+        guard sidecarsNeedSync(for: videoURL) else { return }
+        applySidecarSync(for: videoURL, forceFullCropReload: false)
     }
 
     func openVideo() {
@@ -177,6 +190,7 @@ final class AppState {
         pinnedCueID = nil
         pinnedCropIndex = nil
         didCenterCrop = false
+        resetSidecarTracking()
         status = "Drop a video or press ⌘O"
         errorMessage = nil
     }
@@ -252,6 +266,7 @@ final class AppState {
             loadProgressMessage = ""
             syncSeekInputFromPlayer()
             restoreCropChromeIfNeeded()
+            refreshTrackedSidecarModDates(for: url)
 
             let thumbURL = url
             let jumpToPending = cueStore?.pending.isEmpty == false
@@ -450,6 +465,7 @@ final class AppState {
                 let cue = try cueStore.add(at: t)
                 pinnedCueID = cue.id
                 status = "Cue \(displayTime(cue.t))"
+                refreshTrackedSidecarModDates(for: videoURL)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -469,6 +485,7 @@ final class AppState {
         do {
             try cueStore.load(from: url)
             status = "\(cueStore.cues.count) cues · \(cueStore.pending.count) pending"
+            refreshTrackedSidecarModDates(for: videoURL)
             if !cueStore.pending.isEmpty { nextCue() }
         } catch {
             errorMessage = error.localizedDescription
@@ -578,6 +595,7 @@ final class AppState {
             try store.remove(id)
             if pinnedCueID == id { pinnedCueID = nil }
             status = "Cue deleted"
+            if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -587,6 +605,7 @@ final class AppState {
         guard let cue = cueStore?.cue(id: id) else { return }
         do {
             try cueStore?.setDone(id, done: !cue.done)
+            if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -595,6 +614,7 @@ final class AppState {
     func updateCueLabel(_ id: String, label: String) {
         do {
             try cueStore?.updateLabel(id, label: label)
+            if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -622,6 +642,7 @@ final class AppState {
         do {
             try cueStore?.updateTime(id, seconds: clamped)
             gotoCue(id)
+            if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -656,6 +677,7 @@ final class AppState {
         do {
             try cropStore?.remove(at: index)
             cropsRevision &+= 1
+            if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
             if let pinned = pinnedCropIndex {
                 if index == pinned {
                     pinnedCropIndex = nextPinnedCropIndex(afterDeleting: index)
@@ -725,6 +747,7 @@ final class AppState {
                 )
                 cropsRevision &+= 1
                 pinnedCropIndex = cropStore.entries.indices.last
+                if let videoURL = self.videoURL { refreshTrackedSidecarModDates(for: videoURL) }
 
                 if let marked = result.markedCue {
                     status = "Saved \(result.filename) · cue \(displayTime(marked.t)) done"
@@ -836,5 +859,134 @@ final class AppState {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func reloadSidecarsFromDisk() {
+        guard let videoURL else { return }
+        applySidecarSync(for: videoURL, forceFullCropReload: true)
+    }
+
+    @discardableResult
+    private func applySidecarSync(for videoURL: URL, forceFullCropReload: Bool) -> Bool {
+        var changed = false
+        let cuesURL = FileAccess.sidecarCuesURL(for: videoURL)
+
+        if forceFullCropReload || cuesSidecarChanged(for: videoURL) {
+            if let cueStore {
+                cueStore.bindFileURL(cuesURL)
+                do {
+                    let before = cueStore.cues.count
+                    try cueStore.reloadFromSidecar(at: cuesURL)
+                    changed = changed || before != cueStore.cues.count
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+        }
+
+        if let cropStore {
+            do {
+                let before = cropStore.entries.count
+                if forceFullCropReload || cropMetadataChanged(for: videoURL) {
+                    let pruned = try cropStore.reloadFromDisk()
+                    if pruned > 0 || before != cropStore.entries.count {
+                        changed = true
+                        cropsRevision &+= 1
+                    }
+                } else if cropsFolderChanged(for: videoURL) {
+                    let pruned = try cropStore.reconcileMissingFiles()
+                    if pruned > 0 {
+                        changed = true
+                        cropsRevision &+= 1
+                    }
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+
+        sanitizePinnedSidecarSelection()
+        refreshTrackedSidecarModDates(for: videoURL)
+        return changed
+    }
+
+    private func sidecarsNeedSync(for videoURL: URL) -> Bool {
+        cuesSidecarChanged(for: videoURL)
+            || cropMetadataChanged(for: videoURL)
+            || cropsFolderChanged(for: videoURL)
+    }
+
+    private func cuesSidecarChanged(for videoURL: URL) -> Bool {
+        let cuesURL = FileAccess.sidecarCuesURL(for: videoURL)
+        let cuesExists = FileManager.default.fileExists(atPath: cuesURL.path)
+        if cuesExists != hadTrackedCuesFile { return true }
+        if cuesExists, let current = modificationDate(of: cuesURL), current != trackedCuesModDate {
+            return true
+        }
+        return false
+    }
+
+    private func cropMetadataChanged(for videoURL: URL) -> Bool {
+        let metaURL = cropMetadataURL(for: videoURL)
+        let metaExists = FileManager.default.fileExists(atPath: metaURL.path)
+        if metaExists != hadTrackedCropMeta { return true }
+        if metaExists, let current = modificationDate(of: metaURL), current != trackedCropMetaModDate {
+            return true
+        }
+        return false
+    }
+
+    private func cropsFolderChanged(for videoURL: URL) -> Bool {
+        let folder = cropsFolderURL(for: videoURL)
+        let folderExists = FileManager.default.fileExists(atPath: folder.path)
+        if folderExists != hadTrackedCropsFolder { return true }
+        if folderExists, let current = modificationDate(of: folder), current != trackedCropsFolderModDate {
+            return true
+        }
+        return false
+    }
+
+    private func cropsFolderURL(for videoURL: URL) -> URL {
+        CropStore.cropsFolder(for: videoURL)
+    }
+
+    private func cropMetadataURL(for videoURL: URL) -> URL {
+        cropsFolderURL(for: videoURL).appendingPathComponent("metadata.json")
+    }
+
+    private func refreshTrackedSidecarModDates(for videoURL: URL) {
+        let cuesURL = FileAccess.sidecarCuesURL(for: videoURL)
+        hadTrackedCuesFile = FileManager.default.fileExists(atPath: cuesURL.path)
+        trackedCuesModDate = hadTrackedCuesFile ? modificationDate(of: cuesURL) : nil
+
+        let metaURL = cropMetadataURL(for: videoURL)
+        hadTrackedCropMeta = FileManager.default.fileExists(atPath: metaURL.path)
+        trackedCropMetaModDate = hadTrackedCropMeta ? modificationDate(of: metaURL) : nil
+
+        let folder = cropsFolderURL(for: videoURL)
+        hadTrackedCropsFolder = FileManager.default.fileExists(atPath: folder.path)
+        trackedCropsFolderModDate = hadTrackedCropsFolder ? modificationDate(of: folder) : nil
+    }
+
+    private func resetSidecarTracking() {
+        hadTrackedCuesFile = false
+        hadTrackedCropMeta = false
+        hadTrackedCropsFolder = false
+        trackedCuesModDate = nil
+        trackedCropMetaModDate = nil
+        trackedCropsFolderModDate = nil
+    }
+
+    private func sanitizePinnedSidecarSelection() {
+        if let pinnedCueID, cueStore?.cue(id: pinnedCueID) == nil {
+            self.pinnedCueID = nil
+        }
+        if let pinned = pinnedCropIndex, cropStore?.entries.indices.contains(pinned) != true {
+            pinnedCropIndex = nil
+        }
+    }
+
+    private func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 }

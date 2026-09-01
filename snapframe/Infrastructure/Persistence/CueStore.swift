@@ -94,6 +94,15 @@ final class CueStore: CueRepository {
         fileURL = url
     }
 
+    func reloadFromSidecar(at url: URL) throws {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            cues = []
+            fileURL = url
+            return
+        }
+        try load(from: url)
+    }
+
     func save() throws {
         guard let fileURL else { return }
         let dtos = cues.map { c in

@@ -24,6 +24,9 @@ struct snapframeApp: App {
                     appDelegate.onQuit = { [state] in
                         state.player.pause(true)
                     }
+                    appDelegate.onBecomeActive = { [state] in
+                        state.syncSidecarsIfChanged()
+                    }
                     openLaunchArgumentIfPresent()
                 }
                 .onOpenURL { url in
@@ -77,7 +80,7 @@ struct snapframeApp: App {
                     .keyboardShortcut("s", modifiers: [.command])
             }
             CommandGroup(after: .sidebar) {
-                Button("Refresh Preview") { state.refreshPreview() }
+                Button("Refresh") { state.refreshPreview() }
                     .keyboardShortcut("r", modifiers: [.command])
                 Button("Toggle Inspector") { state.inspectorVisible.toggle() }
                     .keyboardShortcut("\\", modifiers: [.command])

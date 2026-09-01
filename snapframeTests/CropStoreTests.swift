@@ -77,4 +77,61 @@ final class CropStoreTests: XCTestCase {
         XCTAssertTrue(store.entries.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
     }
+
+    func testReloadFromDiskPrunesMissingFiles() throws {
+        try store.ensureFolder()
+        let kept = "crop_001.png"
+        let missing = "crop_002.png"
+        try Data([1]).write(to: store.cropsFolder.appendingPathComponent(kept))
+        try store.add(CropEntry(
+            file: kept,
+            timecode: "00:00:01.000",
+            timecodeSeconds: 1,
+            x: 0, y: 0, width: 10, height: 10,
+            videoWidth: 100, videoHeight: 100
+        ))
+        try store.add(CropEntry(
+            file: missing,
+            timecode: "00:00:02.000",
+            timecodeSeconds: 2,
+            x: 0, y: 0, width: 10, height: 10,
+            videoWidth: 100, videoHeight: 100
+        ))
+        try Data([2]).write(to: store.cropsFolder.appendingPathComponent(missing))
+        try FileManager.default.removeItem(at: store.cropsFolder.appendingPathComponent(missing))
+
+        let pruned = try store.reloadFromDisk()
+        XCTAssertEqual(pruned, 1)
+        XCTAssertEqual(store.entries.map(\.file), [kept])
+
+        let reloaded = CropStore(videoURL: videoURL)
+        XCTAssertEqual(reloaded.entries.map(\.file), [kept])
+    }
+
+    func testReconcileMissingFilesWithoutReloadingMetadata() throws {
+        try store.ensureFolder()
+        let kept = "crop_001.png"
+        let missing = "crop_002.png"
+        try Data([1]).write(to: store.cropsFolder.appendingPathComponent(kept))
+        try Data([2]).write(to: store.cropsFolder.appendingPathComponent(missing))
+        try store.add(CropEntry(
+            file: kept,
+            timecode: "00:00:01.000",
+            timecodeSeconds: 1,
+            x: 0, y: 0, width: 10, height: 10,
+            videoWidth: 100, videoHeight: 100
+        ))
+        try store.add(CropEntry(
+            file: missing,
+            timecode: "00:00:02.000",
+            timecodeSeconds: 2,
+            x: 0, y: 0, width: 10, height: 10,
+            videoWidth: 100, videoHeight: 100
+        ))
+        try FileManager.default.removeItem(at: store.cropsFolder.appendingPathComponent(missing))
+
+        let pruned = try store.reconcileMissingFiles()
+        XCTAssertEqual(pruned, 1)
+        XCTAssertEqual(store.entries.map(\.file), [kept])
+    }
 }

@@ -329,7 +329,7 @@ struct ContentView: View {
                 HStack(spacing: 4) {
                     ToolButton(
                         systemName: "arrow.clockwise",
-                        tooltip: "Refresh preview",
+                        tooltip: "Refresh",
                         shortcut: "⌘R"
                     ) { state.refreshPreview() }
                     .disabled(state.videoURL == nil || state.isLoadingVideo)
